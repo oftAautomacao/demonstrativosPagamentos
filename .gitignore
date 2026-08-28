@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+.vite
+.turbo
+.npm-cache
+.env
+storage/originais
+storage/processados
+storage/asa
+storage/screenshots
+storage/runtime
+*.log

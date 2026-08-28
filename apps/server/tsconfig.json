@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "rootDir": "src"
+  },
+  "include": ["src"],
+  "references": [
+    { "path": "../../packages/asa" },
+    { "path": "../../packages/browser" },
+    { "path": "../../packages/convenios" },
+    { "path": "../../packages/domain" },
+    { "path": "../../packages/storage" },
+    { "path": "../../packages/tuss" }
+  ]
+}

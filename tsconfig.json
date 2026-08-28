@@ -1,0 +1,13 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/domain" },
+    { "path": "./packages/browser" },
+    { "path": "./packages/tuss" },
+    { "path": "./packages/asa" },
+    { "path": "./packages/storage" },
+    { "path": "./packages/convenios" },
+    { "path": "./apps/server" },
+    { "path": "./apps/web" }
+  ]
+}

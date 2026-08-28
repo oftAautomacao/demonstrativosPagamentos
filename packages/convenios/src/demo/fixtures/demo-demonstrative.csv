@@ -1,0 +1,4 @@
+guia,paciente,data,codigoOriginal,descricao,valor,glosa,aux1,aux2,aux3,valorInst,filme,codGlosa,quantidade
+000123456789,Ana Pereira,2026-08-12,041301234,Consulta ambulatorial,380.00,0.00,0.00,0.00,0.00,0.00,,,
+000123456789,Ana Pereira,2026-08-12,030101007,Taxa de sala,45.00,0.00,0.00,0.00,0.00,0.00,,,
+000987654321,Bruno Lima,2026-08-13,030102002,Exame complementar,52.30,0.00,0.00,0.00,0.00,0.00,,,
