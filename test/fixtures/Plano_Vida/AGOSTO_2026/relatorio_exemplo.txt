@@ -1,0 +1,28 @@
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - PLANO VIDA
+Data do Pagamento informado pelo Convenio: 15/08/2026
+Mes/Ano de pagamento solicitado: AGOSTO 2026
+Data de geracao do relatorio: 14/09/2026
+Prestador: CLINICA OFTALMOLOGICA EXEMPLO
+Operadora: PLANO VIDA ASSISTENCIA MEDICA
+
+TABELA DE DEMONSTRATIVOS DE CONTA MEDICA
+Numero Processo  Numero Lote  Previsao Pagamento  Valor Producao  Valor Pagamento  PCC  IRRF  ISS  INSS  Download
+2660532021  1306  15/08/2026  5.550,00  5.400,00  258,08  83,25  0,00  0,00  OK (.xml + .xlsx)
+2660532088  1312  15/08/2026  3.820,00  3.790,00  181,02  57,30  0,00  0,00  OK (.xml + .xlsx)
+
+RESUMO DOS SOMATORIOS
+Quantidade de demonstrativos (processos): 2
+Quantidade de itens/procedimentos pagos: 42
+SOMATORIO VALOR PRODUCAO: 9.370,00
+SOMATORIO VALOR PAGAMENTO: 9.190,00
+SOMATORIO TOTAL DOS IMPOSTOS: 579,65
+
+INFORMACOES ADICIONAIS DO PLANO
+Canal de atendimento: Central de relacionamento
+Prazo para contestacao: 30 dias
+Este bloco representa informacoes que podem variar conforme o plano.
+
+OBSERVACOES
+1. Demonstrativos conferidos com os arquivos recebidos.
+2. Valores apresentados em reais.
+FIM DO RELATORIO

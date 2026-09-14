@@ -1,48 +1,14 @@
 {
-  "name": "central-demonstrativos-asa",
-  "version": "0.1.0",
+  "name": "painel-demonstrativos-pagamento",
+  "version": "1.0.0",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "description": "Painel local para visualizar relatórios de demonstrativos gerados pelo Claude.",
   "scripts": {
-    "build": "npm run build --workspaces --if-present",
-    "dev": "concurrently \"npm run dev --workspace @asa/server\" \"npm run dev --workspace @asa/web\"",
-    "lint": "eslint . --ext .ts,.tsx",
-    "test": "vitest run",
-    "format": "prettier --write ."
+    "start": "node server.js",
+    "dev": "node server.js --open",
+    "test": "node --test"
   },
-  "devDependencies": {
-    "@testing-library/jest-dom": "^6.4.8",
-    "@testing-library/react": "^16.0.1",
-    "@types/node": "^22.5.4",
-    "@types/react": "^18.3.5",
-    "@types/react-dom": "^18.3.0",
-    "@typescript-eslint/eslint-plugin": "^8.4.0",
-    "@typescript-eslint/parser": "^8.4.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "concurrently": "^9.0.1",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-import-resolver-typescript": "^3.6.3",
-    "eslint-plugin-import": "^2.30.0",
-    "jsdom": "^25.0.0",
-    "prettier": "^3.3.3",
-    "tsx": "^4.19.1",
-    "typescript": "^5.5.4",
-    "vite": "^5.4.2",
-    "vitest": "^2.1.1"
-  },
-  "dependencies": {
-    "@fastify/cors": "^10.0.1",
-    "dotenv": "^16.4.5",
-    "fastify": "^5.0.0",
-    "playwright": "^1.46.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.1",
-    "xlsx": "^0.18.5",
-    "zod": "^3.23.8"
+  "engines": {
+    "node": ">=18"
   }
 }

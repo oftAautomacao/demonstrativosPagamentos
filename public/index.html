@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Painel local para consulta de demonstrativos de pagamento." />
+    <title>Demonstrativos de pagamento</title>
+    <link rel="stylesheet" href="/styles.css?v=20260915" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg>
+          </span>
+          <span><strong>Gestão Oftalmológica</strong><small>Demonstrativos financeiros</small></span>
+        </div>
+
+        <section class="period-filter" aria-labelledby="period-filter-title">
+          <span class="sidebar-label" id="period-filter-title">Competência</span>
+          <div class="sidebar-fields">
+            <label class="field">
+              <span>Mês</span>
+              <select id="month-select" aria-label="Escolher mês"></select>
+            </label>
+            <label class="field">
+              <span>Ano</span>
+              <select id="year-select" aria-label="Escolher ano"></select>
+            </label>
+          </div>
+        </section>
+
+        <div class="plans-heading">
+          <span class="sidebar-label">Planos disponíveis</span>
+          <span id="report-count" class="sidebar-count">0</span>
+        </div>
+        <nav class="plan-list" id="plan-list" aria-label="Planos disponíveis na competência"></nav>
+
+        <div class="sidebar-footer">
+          <div class="footer-status-row">
+            <div class="source-status"><span class="status-dot"></span><span id="scan-status">Lendo relatórios...</span></div>
+            <button id="refresh-button" class="refresh-button" type="button" title="Atualizar relatórios" aria-label="Atualizar relatórios">
+              <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>
+            </button>
+          </div>
+          <p class="source-path" title="Pasta monitorada"><span id="root-path"></span></p>
+        </div>
+      </aside>
+
+      <main class="page-shell">
+      <section class="loading-state" id="loading-state">
+        <span class="loader"></span>
+        <strong>Lendo relatórios</strong>
+        <p>Organizando as informações dos planos...</p>
+      </section>
+
+      <section class="message-state hidden" id="empty-state">
+        <h1>Nenhum relatório encontrado</h1>
+        <p>Adicione um arquivo <code>relatorio_*.txt</code> à pasta monitorada e atualize a página.</p>
+      </section>
+
+      <section class="message-state hidden" id="error-state">
+        <span class="error-label">Falha na leitura</span>
+        <h1>Não foi possível abrir os relatórios</h1>
+        <p id="error-message"></p>
+        <button class="primary-button" id="error-retry" type="button">Tentar novamente</button>
+      </section>
+
+      <div class="report-view hidden" id="report-view">
+        <section class="report-document">
+          <header class="report-header">
+            <div class="report-heading-line">
+              <div class="report-title-group">
+                <span class="report-emblem" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg>
+                </span>
+                <div>
+                  <span class="plan-label">Demonstrativo financeiro</span>
+                  <h1 class="report-title-main">Relatório de Demonstrativo de Pagamento - <span id="agreement"></span></h1>
+                </div>
+              </div>
+              <nav class="primary-tabs" aria-label="Mudar visualização do relatório">
+                <button type="button" class="primary-tab active" data-tab="overview" title="Demonstrativo" aria-label="Abrir demonstrativo">
+                  <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
+                </button>
+                <button type="button" class="primary-tab" data-tab="complete" title="Relatório completo" aria-label="Abrir relatório completo">
+                  <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg>
+                </button>
+              </nav>
+            </div>
+          </header>
+
+          <section class="primary-panel overview-content" id="overview-panel">
+            <section class="payments-section" aria-labelledby="payments-heading">
+            <div class="section-heading">
+              <div><div><span>Pagamentos do período</span><h2 id="payments-heading">TABELA DE DEMONSTRATIVOS DE CONTA MÉDICA</h2></div></div>
+            </div>
+            <article class="panel table-panel payment-table-panel">
+              <div class="table-scroll">
+                <table class="payment-summary-table">
+                  <thead><tr><th>Data de pagamento</th><th class="number">Valor pago</th></tr></thead>
+                  <tbody id="payments-body"></tbody>
+                  <tfoot id="payments-foot"></tfoot>
+                </table>
+              </div>
+            </article>
+            </section>
+          </section>
+        </section>
+
+        <section class="primary-panel hidden" id="complete-panel">
+          <article class="complete-intro">
+            <div>
+              <span class="eyebrow">Análise inteligente local</span>
+              <h2>Todas as informações do relatório</h2>
+              <p>O analisador identifica automaticamente campos e seções diferentes em cada plano e organiza tudo sem enviar o relatório para a internet.</p>
+            </div>
+            <div class="expand-actions">
+              <button id="expand-all" type="button">Expandir tudo</button>
+              <button id="collapse-all" type="button">Recolher tudo</button>
+            </div>
+          </article>
+          <article class="analysis-card">
+            <span class="analysis-spark" aria-hidden="true">✦</span>
+            <div><small>Leitura automática concluída</small><strong id="analysis-summary"></strong></div>
+            <div class="analysis-categories" id="analysis-categories"></div>
+          </article>
+          <div class="report-sections" id="report-sections"></div>
+          <details class="raw-report">
+            <summary>Visualizar texto original do arquivo</summary>
+            <pre id="raw-report-text"></pre>
+          </details>
+        </section>
+      </div>
+      </main>
+    </div>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js?v=20260915" defer></script>
+  </body>
+</html>

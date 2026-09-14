@@ -1,84 +1,27 @@
-# Central de Demonstrativos ASA
+# Painel de Demonstrativos de Pagamento
 
-Base local para automatizar a captura, processamento, validacao pre-ASA e conferencia manual de demonstrativos de pagamento de convenios medicos.
+Aplicação local que percorre automaticamente a pasta configurada, localiza arquivos `relatorio_*.txt`, elimina duplicidades e apresenta as informações financeiras em tela.
 
-## Stack
+## Como iniciar
 
-- Node.js + TypeScript strict
-- Fastify para API/agente local
-- React + Vite para interface web
-- Playwright encapsulado por `BrowserAgent`
-- Persistencia local em arquivos dentro de `storage/`
-- Vitest, ESLint e Prettier
+1. Tenha o Node.js 18 ou superior instalado.
+2. Dê dois cliques em `Iniciar Painel.bat`.
 
-## Estrutura principal
+Como alternativa, abra o PowerShell nesta pasta e execute `npm run dev`. O navegador será aberto automaticamente em `http://127.0.0.1:4173`.
 
-```text
-apps/
-  server/   API local, scheduler, orquestracao do fluxo
-  web/      Interface React
-packages/
-  asa/      Geracao e validacao do XLSX ASA
-  browser/  Abstracao de navegador e implementacao Playwright
-  convenios/ contratos e adapter DEMO
-  domain/   Modelos, enums, ids e utilitarios monetarios
-  storage/  Persistencia local e historico de arquivos
-  tuss/     Repositorio e servico de mapeamento TUSS
-storage/
-  originais/
-  processados/
-  asa/
-  runtime/
-tests/
-  support/
-```
+Não é necessário instalar dependências. Crie um arquivo local chamado `.reports-root` na raiz do projeto e informe nele o caminho completo da pasta de relatórios. Esse arquivo é ignorado pelo Git. Como alternativa, defina a variável `REPORTS_ROOT` antes de iniciar a aplicação.
 
-## Instalacao
+## O que o painel exibe
 
-```bash
-npm install
-```
+- Navegação lateral com seleção de mês e ano;
+- Lista automática dos planos disponíveis na competência escolhida;
+- Nome do plano e relatório de demonstrativos de pagamento;
+- Tela inicial simplificada com pagamentos agrupados por data e somatório total;
+- Tabela de demonstrativos de conta médica como informação principal;
+- Aba “Relatório completo” com análise automática local das seções e campos variáveis do TXT;
+- Texto original do arquivo para conferência;
+- Detecção de cópias idênticas do mesmo relatório.
 
-## Configuracao
+## Testes
 
-1. Crie um `.env` a partir de `.env.example`.
-2. Ajuste portas e `ASA_STORAGE_ROOT` se necessario.
-3. Para convenios reais, preencha as credenciais com `PORTAL_<CONVENIO>_USERNAME` e `PORTAL_<CONVENIO>_PASSWORD`.
-
-## Executar em desenvolvimento
-
-```bash
-npm run dev
-```
-
-- Web: `http://localhost:3000`
-- API local: `http://localhost:3333`
-
-## Rodar testes e lint
-
-```bash
-npm run test
-npm run lint
-```
-
-## Fluxo DEMO
-
-O sistema inicializa com um convenio `DEMO` que:
-
-1. localiza um pagamento ficticio;
-2. preserva um CSV original em `storage/originais`;
-3. normaliza os dados;
-4. aplica um mapeamento TUSS de exemplo;
-5. gera o XLSX ASA em `storage/asa`;
-6. valida totais antes do ASA;
-7. publica o demonstrativo na interface.
-
-O botao `Executar agora` repete esse fluxo e atualiza o demonstrativo DEMO.
-
-## Comandos uteis
-
-```bash
-npm run dev --workspace @asa/server
-npm run dev --workspace @asa/web
-npm run build
-```
+Execute `npm test` para validar a leitura dos relatórios e a preservação das seções variáveis.
