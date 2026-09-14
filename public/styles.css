@@ -29,13 +29,9 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 300px minmax(0, 1fr); }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 29px 20px 18px; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(175deg, #09283b 0%, #071d2d 55%, #061927 100%); color: #fff; box-shadow: 10px 0 35px rgba(7,31,48,.08); }
-.sidebar::before { content: ""; position: absolute; width: 220px; height: 220px; left: -105px; top: -115px; border: 35px solid rgba(36,177,163,.06); border-radius: 50%; pointer-events: none; }
-.brand { display: flex; align-items: center; gap: 12px; padding: 0 7px 29px; position: relative; z-index: 1; }
-.brand-mark { width: 43px; height: 43px; display: grid; place-items: center; border-radius: 13px; background: linear-gradient(145deg, #229fbe, #16a491); box-shadow: 0 9px 24px rgba(0,0,0,.2); }
-.brand-mark svg { width: 21px; height: 21px; }
-.brand > span:last-child, .brand strong, .brand small { display: block; }
-.brand strong { font-size: .94rem; letter-spacing: -.01em; }
-.brand small { margin-top: 3px; color: #88a7b9; font-size: .67rem; }
+.sidebar::before { content: ""; position: absolute; width: 260px; height: 260px; left: -105px; top: -112px; border: 38px solid rgba(36,177,163,.12); border-radius: 50%; background: rgba(25,139,150,.025); box-shadow: 0 0 70px rgba(30,177,164,.1), inset 0 0 35px rgba(24,147,159,.05); pointer-events: none; }
+.brand { display: flex; align-items: center; min-height: 62px; padding: 0 7px 24px; position: relative; z-index: 1; }
+.brand-logo { display: block; width: 100%; max-width: 202px; height: auto; object-fit: contain; object-position: left center; }
 .sidebar-label { color: #89a0b7; font-size: .66rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .period-filter { padding: 17px; border: 1px solid rgba(138,195,202,.15); border-radius: 14px; background: linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.025)); box-shadow: inset 0 1px rgba(255,255,255,.04); }
 .sidebar-fields { display: grid; grid-template-columns: 1fr 86px; gap: 8px; margin-top: 12px; }
@@ -80,6 +76,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 .report-document { width: 100%; min-width: 0; }
 .report-header { position: relative; }
+.report-header::before { content: ""; position: absolute; width: 210px; height: 210px; left: -72px; top: -108px; border: 34px solid rgba(25,150,139,.075); border-radius: 50%; background: rgba(25,150,139,.018); box-shadow: 0 0 70px rgba(25,150,139,.07), inset 0 0 30px rgba(25,150,139,.035); pointer-events: none; }
 .report-heading-line { min-height: 92px; padding: 4px 0 18px; position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
 .report-title-group { min-width: 0; display: flex; align-items: center; gap: 16px; }
 .report-emblem { width: 52px; height: 52px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 15px; background: linear-gradient(145deg, #229fbe, #16a491); color: #fff; box-shadow: 0 9px 24px rgba(10,115,122,.2); }
@@ -259,7 +256,8 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
   .app-shell { display: block; }
   .sidebar { position: static; width: 100vw; max-width: 100%; height: auto; padding: 16px; overflow-x: hidden; }
   .period-filter, .plan-list, .sidebar-footer { width: 100%; min-width: 0; }
-  .brand { padding-bottom: 16px; }
+  .brand { min-height: 54px; padding-bottom: 16px; }
+  .brand-logo { max-width: 185px; }
   .period-filter { padding: 13px; }
   .sidebar-fields { grid-template-columns: minmax(0, 1fr) 96px; }
   .plans-heading { padding-top: 16px; }
@@ -282,7 +280,7 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
 }
 
 @media (max-width: 480px) {
-  .brand small { display: none; }
+  .brand-logo { max-width: 170px; }
   .page-shell { padding-left: 13px; padding-right: 13px; }
   .metrics-grid { grid-template-columns: 1fr; }
   .smart-fields { grid-template-columns: 1fr; }
