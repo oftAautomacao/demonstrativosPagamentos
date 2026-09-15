@@ -76,7 +76,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 .report-document { width: 100%; min-width: 0; }
 .report-header { position: relative; }
-.report-header::before { content: ""; position: absolute; width: 210px; height: 210px; left: -72px; top: -108px; border: 34px solid rgba(25,150,139,.075); border-radius: 50%; background: rgba(25,150,139,.018); box-shadow: 0 0 70px rgba(25,150,139,.07), inset 0 0 30px rgba(25,150,139,.035); pointer-events: none; }
+.report-header::before { content: ""; position: absolute; width: 210px; height: 210px; right: -72px; top: -108px; border: 34px solid rgba(25,150,139,.075); border-radius: 50%; background: rgba(25,150,139,.018); box-shadow: 0 0 70px rgba(25,150,139,.07), inset 0 0 30px rgba(25,150,139,.035); pointer-events: none; }
 .report-heading-line { min-height: 92px; padding: 4px 0 18px; position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
 .report-title-group { min-width: 0; display: flex; align-items: center; gap: 16px; }
 .report-emblem { width: 52px; height: 52px; flex: 0 0 auto; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.2); border-radius: 15px; background: linear-gradient(145deg, #229fbe, #16a491); color: #fff; box-shadow: 0 9px 24px rgba(10,115,122,.2); }
