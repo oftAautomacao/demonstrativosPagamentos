@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Painel local para consulta de demonstrativos de pagamento." />
     <title>Demonstrativos de pagamento</title>
-    <link rel="stylesheet" href="/styles.css?v=20260919" />
+    <link rel="stylesheet" href="/styles.css?v=20260920" />
   </head>
   <body>
     <div class="app-shell">
@@ -111,22 +111,6 @@
         </section>
 
         <section class="primary-panel hidden" id="complete-panel">
-          <article class="complete-intro">
-            <div>
-              <span class="eyebrow">Análise inteligente local</span>
-              <h2>Todas as informações do relatório</h2>
-              <p>O analisador identifica automaticamente campos e seções diferentes em cada plano e organiza tudo sem enviar o relatório para a internet.</p>
-            </div>
-            <div class="expand-actions">
-              <button id="expand-all" type="button">Expandir tudo</button>
-              <button id="collapse-all" type="button">Recolher tudo</button>
-            </div>
-          </article>
-          <article class="analysis-card">
-            <span class="analysis-spark" aria-hidden="true">✦</span>
-            <div><small>Leitura automática concluída</small><strong id="analysis-summary"></strong></div>
-            <div class="analysis-categories" id="analysis-categories"></div>
-          </article>
           <div class="report-sections" id="report-sections"></div>
           <details class="raw-report">
             <summary>Visualizar texto original do arquivo</summary>
@@ -138,6 +122,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=20260915" defer></script>
+    <script src="/app.js?v=20260920" defer></script>
   </body>
 </html>

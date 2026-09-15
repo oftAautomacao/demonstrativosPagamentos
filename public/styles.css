@@ -190,19 +190,6 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
 .status-pill.missing { background: #fdecee; color: var(--red); }
 .table-empty { margin: 0; padding: 32px; color: var(--muted); text-align: center; font-size: .8rem; }
 
-.complete-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; padding: 26px; border: 1px solid #d6e4e8; border-radius: 17px; background: linear-gradient(120deg, #fff, #f7fbfb); box-shadow: 0 10px 32px rgba(23,67,80,.05); }
-.complete-intro h2 { margin: 5px 0; color: #173049; font-size: 1.3rem; }
-.complete-intro p { max-width: 720px; margin: 0; color: var(--muted); font-size: .8rem; line-height: 1.5; }
-.expand-actions { display: flex; gap: 7px; flex-shrink: 0; }
-.expand-actions button { min-height: 37px; padding: 0 12px; border: 1px solid #cddde1; border-radius: 9px; background: #fbfdfd; color: #506b79; font-size: .7rem; font-weight: 750; }
-.expand-actions button:hover { border-color: #71bdb5; color: var(--teal); background: #f1faf8; }
-.analysis-card { padding: 19px 21px; display: grid; grid-template-columns: 42px minmax(220px, 1fr) auto; align-items: center; gap: 14px; border: 1px solid #cce7e3; border-radius: 15px; background: linear-gradient(120deg, #f4fbfa, #eaf7f5); }
-.analysis-spark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: linear-gradient(145deg, #12998d, #167c96); color: #fff; box-shadow: 0 8px 18px rgba(11,141,130,.2); font-size: 1.15rem; }
-.analysis-card small, .analysis-card strong { display: block; }
-.analysis-card small { margin-bottom: 4px; color: var(--teal); font-size: .63rem; font-weight: 800; text-transform: uppercase; letter-spacing: .06em; }
-.analysis-card strong { color: #294058; font-size: .8rem; }
-.analysis-categories { display: flex; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
-.analysis-categories span { padding: 6px 8px; border: 1px solid #d2e7e4; border-radius: 999px; background: #fff; color: #52736f; font-size: .62rem; font-weight: 700; }
 .report-sections { display: grid; gap: 10px; }
 .report-section, .raw-report { overflow: hidden; border: 1px solid #d7e4e8; border-radius: 14px; background: var(--surface); box-shadow: 0 5px 18px rgba(26,66,80,.035); }
 .report-section summary, .raw-report summary { list-style: none; cursor: pointer; }
@@ -246,8 +233,6 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
   .fact-item:nth-child(odd) { border-right: 1px solid rgba(255,255,255,.11); }
   .fact-item:nth-child(-n+2) { border-bottom: 1px solid rgba(255,255,255,.11); }
   .report-facts .duplicate-info { grid-column: 1 / -1; }
-  .analysis-card { grid-template-columns: 40px 1fr; }
-  .analysis-categories { grid-column: 1 / -1; justify-content: flex-start; }
   .table-title-row { display: block; }
   .table-tools { margin-top: 14px; }
 }
@@ -266,7 +251,7 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
   .sidebar-footer { margin-top: 10px; padding-top: 11px; display: block; }
   .sidebar .source-path { display: none; }
   .page-shell { width: 100vw; max-width: 100%; padding-top: 20px; overflow-x: hidden; }
-  .report-heading-line, .complete-intro { display: block; }
+  .report-heading-line { display: block; }
   .primary-tabs { width: fit-content; margin-top: 15px; }
   .report-facts { margin: 0 16px 17px; grid-template-columns: 1fr; }
   .fact-item, .fact-item:nth-child(odd) { border-right: 0; border-bottom: 1px solid rgba(255,255,255,.11); }
@@ -276,7 +261,6 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
   .date-count { grid-column: 1 / -1; width: fit-content; }
   .table-tools { display: grid; }
   .table-tools input, .table-tools select { width: 100%; }
-  .expand-actions { margin-top: 16px; }
 }
 
 @media (max-width: 480px) {
@@ -287,7 +271,6 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
   .primary-tab { font-size: .75rem; }
   .metric-card { min-height: 112px; }
   .table-title-row .section-heading h2 { font-size: .9rem; }
-  .expand-actions { display: grid; grid-template-columns: 1fr 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) {

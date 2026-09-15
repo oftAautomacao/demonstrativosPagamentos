@@ -10,12 +10,10 @@ const ids = [
   "root-path", "refresh-button", "report-count", "scan-status", "loading-state", "empty-state",
   "error-state", "error-message", "error-retry", "report-view", "month-select", "year-select",
   "plan-list", "agreement", "payments-body", "payments-foot",
-  "analysis-summary", "analysis-categories", "report-sections", "raw-report-text", "expand-all",
-  "collapse-all", "toast",
+  "report-sections", "raw-report-text", "toast",
 ];
 const elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
-const number = new Intl.NumberFormat("pt-BR");
 const monthNames = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 function formatMoney(cents) {
@@ -116,10 +114,6 @@ function renderPayments(report) {
 }
 
 function renderFullReport(report) {
-  const fieldCount = report.fullSections.reduce((total, section) => total + (section.fields?.length || 0), 0);
-  const categories = [...new Set(report.fullSections.map((section) => section.category).filter(Boolean))];
-  elements["analysis-summary"].textContent = `${number.format(report.fullSections.length)} seções e ${number.format(fieldCount)} campos identificados neste arquivo.`;
-  elements["analysis-categories"].innerHTML = categories.map((category) => `<span>${escapeHtml(category)}</span>`).join("");
   elements["report-sections"].innerHTML = report.fullSections.length
     ? report.fullSections.map((section, index) => `
       <details class="report-section" ${index === 0 ? "open" : ""}>
@@ -208,6 +202,4 @@ document.querySelector(".primary-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-tab]");
   if (button) setActiveTab(button.dataset.tab);
 });
-elements["expand-all"].addEventListener("click", () => document.querySelectorAll(".report-section").forEach((item) => { item.open = true; }));
-elements["collapse-all"].addEventListener("click", () => document.querySelectorAll(".report-section").forEach((item) => { item.open = false; }));
 loadReports();
