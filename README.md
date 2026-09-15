@@ -9,7 +9,13 @@ Aplicação local que percorre automaticamente a pasta configurada, localiza arq
 
 Como alternativa, abra o PowerShell nesta pasta e execute `npm run dev`. O navegador será aberto automaticamente em `http://127.0.0.1:4173`.
 
-Não é necessário instalar dependências. Crie um arquivo local chamado `.reports-root` na raiz do projeto e informe nele o caminho completo da pasta de relatórios. Esse arquivo é ignorado pelo Git. Como alternativa, defina a variável `REPORTS_ROOT` antes de iniciar a aplicação.
+Para visualizar os relatórios, não é necessário instalar pacotes do Node.js. Crie um arquivo local chamado `.reports-root` na raiz do projeto e informe nele o caminho completo da pasta de relatórios. Esse arquivo é ignorado pelo Git. Como alternativa, defina a variável `REPORTS_ROOT` antes de iniciar a aplicação.
+
+Para usar a aba **Ajuste TUSS**, instale também Python 3.11 ou superior e execute uma vez:
+
+```powershell
+python -m pip install -r requirements.txt
+```
 
 ## O que o painel exibe
 
@@ -21,6 +27,9 @@ Não é necessário instalar dependências. Crie um arquivo local chamado `.repo
 - Aba “Relatório completo” com análise automática local das seções e campos variáveis do TXT;
 - Texto original do arquivo para conferência;
 - Detecção de cópias idênticas do mesmo relatório.
+- Aba “Ajuste TUSS” que compara `Ajuste Codigo TUSS.xlsx` com todas as colunas `TUSS` dos demonstrativos XLSX, XLSM ou PDF da competência;
+- Prévia por arquivo, confirmação antes da correção e criação de cópias na pasta `TUSS Corrigidos`, sem alterar os originais;
+- Registro JSON de auditoria com cada arquivo gerado e a quantidade de substituições.
 
 ## Testes
 

@@ -3,14 +3,20 @@ window.__painelCarregado = true;
 const state = {
   data: null,
   activeId: null,
-  activeTab: window.location.hash === "#relatorio-completo" ? "complete" : "overview",
+  activeTab: window.location.hash === "#relatorio-completo" ? "complete" : window.location.hash === "#ajuste-tuss" ? "tuss" : "overview",
+  tussCache: new Map(),
+  tussApplied: new Set(),
+  tussLoadingFor: null,
+  tussRequestToken: 0,
 };
 
 const ids = [
   "root-path", "refresh-button", "report-count", "scan-status", "loading-state", "empty-state",
   "error-state", "error-message", "error-retry", "report-view", "month-select", "year-select",
   "plan-list", "agreement", "payments-body", "payments-foot",
-  "report-sections", "raw-report-text", "toast",
+  "report-sections", "raw-report-text", "toast", "tuss-refresh", "tuss-loading", "tuss-unavailable",
+  "tuss-unavailable-title", "tuss-unavailable-message", "tuss-content", "tuss-mapping-file",
+  "tuss-rule-count", "tuss-file-count", "tuss-match-count", "tuss-files", "tuss-apply", "tuss-result",
 ];
 const elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -128,6 +134,102 @@ function renderFullReport(report) {
   elements["raw-report-text"].textContent = report.rawText || "";
 }
 
+function formatCount(value) {
+  return Number(value || 0).toLocaleString("pt-BR");
+}
+
+function showTussState(stateName) {
+  elements["tuss-loading"].classList.toggle("hidden", stateName !== "loading");
+  elements["tuss-unavailable"].classList.toggle("hidden", stateName !== "unavailable");
+  elements["tuss-content"].classList.toggle("hidden", stateName !== "content");
+}
+
+function renderTussUnavailable(title, message) {
+  elements["tuss-unavailable-title"].textContent = title;
+  elements["tuss-unavailable-message"].textContent = message;
+  showTussState("unavailable");
+}
+
+function tussStatusLabel(file) {
+  if (file.status === "ready") return `${formatCount(file.totalMatches)} correção(ões)`;
+  if (file.status === "no_matches") return "Nenhum ajuste necessário";
+  if (file.status === "no_tuss_column") return "Coluna TUSS não encontrada";
+  if (file.status === "protected") return "Arquivo protegido";
+  return file.error || "Falha na análise";
+}
+
+function renderTussAnalysis(analysis) {
+  elements["tuss-result"].classList.add("hidden");
+  elements["tuss-result"].innerHTML = "";
+  if (!analysis.ready) {
+    const title = !analysis.mapping?.found
+      ? "Tabela de ajuste não encontrada"
+      : analysis.totalFiles === 0
+        ? "Demonstrativos não encontrados"
+        : "A análise TUSS precisa de atenção";
+    renderTussUnavailable(title, (analysis.messages || []).join(" ") || "Não foi possível preparar a comparação desta competência.");
+    return;
+  }
+
+  elements["tuss-mapping-file"].textContent = analysis.mapping.fileName;
+  elements["tuss-rule-count"].textContent = formatCount(analysis.mapping.totalRules);
+  elements["tuss-file-count"].textContent = formatCount(analysis.totalFiles);
+  elements["tuss-match-count"].textContent = formatCount(analysis.totalMatches);
+  elements["tuss-files"].innerHTML = analysis.files.map((file) => `
+    <article class="tuss-file ${file.status}">
+      <div class="tuss-file-main">
+        <span class="tuss-file-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg>
+        </span>
+        <span><strong>${escapeHtml(file.fileName)}</strong><small>${escapeHtml(file.relativePath)}</small></span>
+      </div>
+      <span class="tuss-format">${escapeHtml(file.format)}</span>
+      <span class="tuss-file-status">${escapeHtml(tussStatusLabel(file))}</span>
+      ${file.replacements?.length ? `<div class="tuss-change-list">${file.replacements.map((change) => `
+        <span><code>${escapeHtml(change.current)}</code><b>→</b><code>${escapeHtml(change.new)}</code><strong>${formatCount(change.count)}×</strong></span>
+      `).join("")}</div>` : ""}
+    </article>
+  `).join("");
+
+  const alreadyApplied = state.tussApplied.has(state.activeId);
+  elements["tuss-apply"].disabled = analysis.totalMatches === 0 || alreadyApplied;
+  elements["tuss-apply"].textContent = alreadyApplied
+    ? "Arquivos corrigidos gerados"
+    : analysis.totalMatches === 0
+      ? "Nenhuma correção necessária"
+      : "Gerar arquivos corrigidos";
+  showTussState("content");
+}
+
+async function loadTussAnalysis({ force = false } = {}) {
+  const report = activeReport();
+  if (!report) return;
+  if (!force && state.tussCache.has(report.id)) {
+    renderTussAnalysis(state.tussCache.get(report.id));
+    return;
+  }
+  if (!force && state.tussLoadingFor === report.id) return;
+  if (force) {
+    state.tussCache.delete(report.id);
+    state.tussApplied.delete(report.id);
+  }
+  const requestToken = ++state.tussRequestToken;
+  state.tussLoadingFor = report.id;
+  showTussState("loading");
+  elements["tuss-result"].classList.add("hidden");
+  try {
+    const response = await fetch(`/api/tuss-analysis?reportId=${encodeURIComponent(report.id)}`, { cache: "no-store" });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.error || "Erro desconhecido");
+    state.tussCache.set(report.id, data);
+    if (requestToken === state.tussRequestToken && state.activeId === report.id) renderTussAnalysis(data);
+  } catch (error) {
+    if (requestToken === state.tussRequestToken && state.activeId === report.id) renderTussUnavailable("Não foi possível analisar os códigos TUSS", error.message);
+  } finally {
+    if (state.tussLoadingFor === report.id) state.tussLoadingFor = null;
+  }
+}
+
 function renderActiveReport() {
   const report = activeReport();
   if (!report) return;
@@ -136,6 +238,7 @@ function renderActiveReport() {
 
   renderPayments(report);
   renderFullReport(report);
+  if (state.activeTab === "tuss") loadTussAnalysis();
 }
 
 function setActiveTab(tab) {
@@ -143,7 +246,9 @@ function setActiveTab(tab) {
   document.querySelectorAll(".primary-tab").forEach((button) => button.classList.toggle("active", button.dataset.tab === tab));
   document.querySelectorAll(".primary-panel").forEach((panel) => panel.classList.add("hidden"));
   document.getElementById(`${tab}-panel`).classList.remove("hidden");
-  history.replaceState(null, "", tab === "complete" ? "#relatorio-completo" : window.location.pathname);
+  const hash = tab === "complete" ? "#relatorio-completo" : tab === "tuss" ? "#ajuste-tuss" : window.location.pathname;
+  history.replaceState(null, "", hash);
+  if (tab === "tuss") loadTussAnalysis();
 }
 
 function showToast(message) {
@@ -161,6 +266,8 @@ async function loadReports({ quiet = false } = {}) {
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || data.error || "Erro desconhecido");
     state.data = data;
+    state.tussCache.clear();
+    state.tussApplied.clear();
     if (!data.reports.length) {
       showOnly(elements["empty-state"]);
       return;
@@ -201,5 +308,40 @@ elements["year-select"].addEventListener("change", (event) => {
 document.querySelector(".primary-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-tab]");
   if (button) setActiveTab(button.dataset.tab);
+});
+elements["tuss-refresh"].addEventListener("click", () => loadTussAnalysis({ force: true }));
+elements["tuss-apply"].addEventListener("click", async () => {
+  const report = activeReport();
+  const analysis = report ? state.tussCache.get(report.id) : null;
+  if (!report || !analysis || analysis.totalMatches === 0) return;
+  const confirmed = window.confirm(
+    `Serão criadas cópias corrigidas de ${analysis.totalFiles} arquivo(s), com ${analysis.totalMatches} substituição(ões). Os arquivos originais não serão alterados. Deseja continuar?`
+  );
+  if (!confirmed) return;
+
+  const button = elements["tuss-apply"];
+  button.disabled = true;
+  button.textContent = "Gerando cópias...";
+  try {
+    const response = await fetch("/api/tuss-corrections", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: report.id, confirmed: true }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.error || "Erro desconhecido");
+    state.tussApplied.add(report.id);
+    elements["tuss-result"].innerHTML = data.applied
+      ? `<strong>${formatCount(data.totalReplacements)} correção(ões) concluída(s)</strong><span>Arquivos criados em <code>${escapeHtml(data.outputFolder)}</code>.</span><ul>${data.outputs.map((item) => `<li>${escapeHtml(item.output)} — ${formatCount(item.replacements)} alteração(ões)</li>`).join("")}</ul>`
+      : `<strong>Nenhuma correção necessária</strong><span>${escapeHtml(data.message || "Os códigos já estão atualizados.")}</span>`;
+    elements["tuss-result"].classList.remove("hidden");
+    button.textContent = "Arquivos corrigidos gerados";
+    showToast("Correções TUSS concluídas");
+  } catch (error) {
+    button.disabled = false;
+    button.textContent = "Gerar arquivos corrigidos";
+    elements["tuss-result"].innerHTML = `<strong>Falha ao gerar os arquivos</strong><span>${escapeHtml(error.message)}</span>`;
+    elements["tuss-result"].classList.remove("hidden");
+  }
 });
 loadReports();

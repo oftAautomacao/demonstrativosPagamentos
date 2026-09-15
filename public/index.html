@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Painel local para consulta de demonstrativos de pagamento." />
     <title>Demonstrativos de pagamento</title>
-    <link rel="stylesheet" href="/styles.css?v=20260920" />
+    <link rel="stylesheet" href="/styles.css?v=20260921" />
   </head>
   <body>
     <div class="app-shell">
@@ -88,6 +88,9 @@
                 <button type="button" class="primary-tab" data-tab="complete" title="Relatório completo" aria-label="Abrir relatório completo">
                   <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg>
                 </button>
+                <button type="button" class="primary-tab" data-tab="tuss" title="Ajuste de códigos TUSS" aria-label="Abrir ajuste de códigos TUSS">
+                  <svg viewBox="0 0 24 24"><path d="m8 6-5 6 5 6M16 6l5 6-5 6M14 4l-4 16" /></svg>
+                </button>
               </nav>
             </div>
           </header>
@@ -117,11 +120,60 @@
             <pre id="raw-report-text"></pre>
           </details>
         </section>
+
+        <section class="primary-panel hidden tuss-panel" id="tuss-panel" aria-labelledby="tuss-heading">
+          <div class="tuss-heading-row">
+            <div>
+              <span class="eyebrow">Correção de códigos</span>
+              <h2 id="tuss-heading">Ajuste TUSS</h2>
+              <p>Compara os demonstrativos da competência com a tabela de ajuste cadastrada na pasta do plano.</p>
+            </div>
+            <button class="tuss-refresh-button" id="tuss-refresh" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18 6l2 5M17.9 15A7 7 0 0 1 6 18l-2-5" /></svg>
+              Reanalisar
+            </button>
+          </div>
+
+          <div class="tuss-loading" id="tuss-loading">
+            <span class="tuss-spinner" aria-hidden="true"></span>
+            <span>Analisando códigos TUSS...</span>
+          </div>
+
+          <div class="tuss-message hidden" id="tuss-unavailable">
+            <span class="tuss-message-icon" aria-hidden="true">!</span>
+            <div><h3 id="tuss-unavailable-title"></h3><p id="tuss-unavailable-message"></p></div>
+          </div>
+
+          <div class="tuss-content hidden" id="tuss-content">
+            <div class="tuss-source-row">
+              <span><small>Tabela de ajuste</small><strong id="tuss-mapping-file"></strong></span>
+              <span class="tuss-ready-pill">Pronta para comparar</span>
+            </div>
+
+            <div class="tuss-stats" aria-label="Resumo da análise TUSS">
+              <div><small>Regras cadastradas</small><strong id="tuss-rule-count">0</strong></div>
+              <div><small>Arquivos analisados</small><strong id="tuss-file-count">0</strong></div>
+              <div class="tuss-stat-highlight"><small>Correções encontradas</small><strong id="tuss-match-count">0</strong></div>
+            </div>
+
+            <div class="tuss-files" id="tuss-files"></div>
+
+            <div class="tuss-action-bar">
+              <div>
+                <strong>Os arquivos originais serão preservados</strong>
+                <small>As cópias serão criadas na pasta “TUSS Corrigidos” dentro da competência selecionada.</small>
+              </div>
+              <button class="tuss-apply-button" id="tuss-apply" type="button">Gerar arquivos corrigidos</button>
+            </div>
+          </div>
+
+          <div class="tuss-result hidden" id="tuss-result" role="status" aria-live="polite"></div>
+        </section>
       </div>
       </main>
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=20260920" defer></script>
+    <script src="/app.js?v=20260921" defer></script>
   </body>
 </html>

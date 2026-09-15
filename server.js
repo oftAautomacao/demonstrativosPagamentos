@@ -3,6 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { loadReports } = require("./report-parser");
+const { analyzeTuss, applyTussCorrections } = require("./tuss-service");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -39,6 +40,33 @@ function sendJson(response, status, body) {
   response.end(JSON.stringify(body));
 }
 
+function findReport(reportId) {
+  if (!reportId || !/^[a-f0-9]{12}$/.test(reportId)) return null;
+  return loadReports(REPORTS_ROOT).reports.find((report) => report.id === reportId) || null;
+}
+
+function readJsonBody(request) {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk) => {
+      body += chunk;
+      if (Buffer.byteLength(body, "utf8") > 64 * 1024) {
+        reject(new Error("A solicitação excedeu o limite permitido."));
+        request.destroy();
+      }
+    });
+    request.on("end", () => {
+      try {
+        resolve(body ? JSON.parse(body) : {});
+      } catch {
+        reject(new Error("A solicitação contém JSON inválido."));
+      }
+    });
+    request.on("error", reject);
+  });
+}
+
 function serveStatic(request, response) {
   const requestPath = request.url === "/" ? "/index.html" : request.url.split("?")[0];
   const safePath = path.normalize(requestPath).replace(/^(\.\.[/\\])+/, "");
@@ -70,7 +98,8 @@ function openBrowser(url) {
   child.unref();
 }
 
-const server = http.createServer((request, response) => {
+const server = http.createServer(async (request, response) => {
+  const requestUrl = new URL(request.url, `http://${request.headers.host || HOST}`);
   if (request.method === "GET" && request.url.startsWith("/api/reports")) {
     try {
       sendJson(response, 200, loadReports(REPORTS_ROOT));
@@ -80,6 +109,39 @@ const server = http.createServer((request, response) => {
         detail: error.message,
         rootPath: REPORTS_ROOT,
       });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/tuss-analysis") {
+    const report = findReport(requestUrl.searchParams.get("reportId"));
+    if (!report) {
+      sendJson(response, 404, { error: "Relatório não encontrado para a análise TUSS." });
+      return;
+    }
+    try {
+      sendJson(response, 200, await analyzeTuss(REPORTS_ROOT, report.filePath));
+    } catch (error) {
+      sendJson(response, 500, { error: "Não foi possível analisar os códigos TUSS.", detail: error.message });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/api/tuss-corrections") {
+    try {
+      const body = await readJsonBody(request);
+      if (body.confirmed !== true) {
+        sendJson(response, 400, { error: "A confirmação é obrigatória para gerar os arquivos corrigidos." });
+        return;
+      }
+      const report = findReport(body.reportId);
+      if (!report) {
+        sendJson(response, 404, { error: "Relatório não encontrado para a correção TUSS." });
+        return;
+      }
+      sendJson(response, 200, await applyTussCorrections(REPORTS_ROOT, report.filePath));
+    } catch (error) {
+      sendJson(response, 500, { error: "Não foi possível gerar os arquivos corrigidos.", detail: error.message });
     }
     return;
   }

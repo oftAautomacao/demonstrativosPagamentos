@@ -11,6 +11,15 @@ if errorlevel 1 (
 )
 
 echo Iniciando o painel de demonstrativos...
+where python >nul 2>nul
+if errorlevel 1 (
+  echo Aviso: Python nao foi encontrado. A aba de Ajuste TUSS nao estara disponivel.
+) else (
+  python -c "import openpyxl, fitz" >nul 2>nul
+  if errorlevel 1 (
+    echo Aviso: para usar o Ajuste TUSS, execute: python -m pip install -r requirements.txt
+  )
+)
 node server.js --open
 
 echo.
