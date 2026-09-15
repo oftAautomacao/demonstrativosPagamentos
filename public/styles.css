@@ -31,7 +31,7 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 29px 20px 18px; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(175deg, #09283b 0%, #071d2d 55%, #061927 100%); color: #fff; box-shadow: 10px 0 35px rgba(7,31,48,.08); }
 .sidebar::before { content: ""; position: absolute; width: 260px; height: 260px; left: -105px; top: -112px; border: 38px solid rgba(36,177,163,.12); border-radius: 50%; background: rgba(25,139,150,.025); box-shadow: 0 0 70px rgba(30,177,164,.1), inset 0 0 35px rgba(24,147,159,.05); pointer-events: none; }
 .brand { display: flex; align-items: center; min-height: 62px; padding: 0 7px 24px; position: relative; z-index: 1; }
-.brand-logo { display: block; width: 100%; max-width: 202px; height: auto; object-fit: contain; object-position: left center; }
+.brand-logo { display: block; width: 100%; max-width: 180px; height: auto; object-fit: contain; object-position: left center; }
 .sidebar-label { color: #89a0b7; font-size: .66rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
 .period-filter { padding: 17px; border: 1px solid rgba(138,195,202,.15); border-radius: 14px; background: linear-gradient(145deg, rgba(255,255,255,.06), rgba(255,255,255,.025)); box-shadow: inset 0 1px rgba(255,255,255,.04); }
 .sidebar-fields { display: grid; grid-template-columns: 1fr 86px; gap: 8px; margin-top: 12px; }
@@ -257,7 +257,7 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
   .sidebar { position: static; width: 100vw; max-width: 100%; height: auto; padding: 16px; overflow-x: hidden; }
   .period-filter, .plan-list, .sidebar-footer { width: 100%; min-width: 0; }
   .brand { min-height: 54px; padding-bottom: 16px; }
-  .brand-logo { max-width: 185px; }
+  .brand-logo { max-width: 165px; }
   .period-filter { padding: 13px; }
   .sidebar-fields { grid-template-columns: minmax(0, 1fr) 96px; }
   .plans-heading { padding-top: 16px; }
@@ -280,7 +280,7 @@ tfoot td { border: 0; border-top: 1px solid var(--line); background: #f6f8fa; co
 }
 
 @media (max-width: 480px) {
-  .brand-logo { max-width: 170px; }
+  .brand-logo { max-width: 150px; }
   .page-shell { padding-left: 13px; padding-right: 13px; }
   .metrics-grid { grid-template-columns: 1fr; }
   .smart-fields { grid-template-columns: 1fr; }
