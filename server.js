@@ -4,7 +4,11 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { loadReports } = require("./report-parser");
 const { analyzeTuss, applyTussCorrections } = require("./tuss-service");
+const { listTussTables, saveTussTable } = require("./tuss-table-service");
 const { readControlDate, writeControlDate } = require("./control-date");
+const { readImportConfig, writeImportConfig } = require("./control-import");
+const { readControlPayments } = require("./control-payments");
+const { readPlanCredentials, writePlanCredentials } = require("./plan-credentials");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -47,13 +51,13 @@ function findReport(reportId) {
   return loadReports(REPORTS_ROOT).reports.find((report) => report.id === reportId) || null;
 }
 
-function readJsonBody(request) {
+function readJsonBody(request, maxBytes = 64 * 1024) {
   return new Promise((resolve, reject) => {
     let body = "";
     request.setEncoding("utf8");
     request.on("data", (chunk) => {
       body += chunk;
-      if (Buffer.byteLength(body, "utf8") > 64 * 1024) {
+      if (Buffer.byteLength(body, "utf8") > maxBytes) {
         reject(new Error("A solicitação excedeu o limite permitido."));
         request.destroy();
       }
@@ -134,6 +138,95 @@ const server = http.createServer(async (request, response) => {
     } catch (error) {
       sendJson(response, 400, {
         error: "Não foi possível salvar a Data Desejada.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/import-config") {
+    try {
+      sendJson(response, 200, readImportConfig(CONTROL_REPORT_PATH));
+    } catch (error) {
+      sendJson(response, 500, {
+        error: "Nao foi possivel ler a configuracao de importacao.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/import-config") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, writeImportConfig(CONTROL_REPORT_PATH, body.rows));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Nao foi possivel salvar a configuracao de importacao.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/control-payments") {
+    try {
+      sendJson(response, 200, readControlPayments(CONTROL_REPORT_PATH));
+    } catch (error) {
+      sendJson(response, 500, {
+        error: "Nao foi possivel ler os pagamentos e importacoes.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/tuss-tables") {
+    try {
+      sendJson(response, 200, await listTussTables(REPORTS_ROOT));
+    } catch (error) {
+      sendJson(response, 500, {
+        error: "Não foi possível ler as tabelas de ajuste TUSS.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/plan-credentials") {
+    try {
+      sendJson(response, 200, readPlanCredentials(REPORTS_ROOT));
+    } catch (error) {
+      sendJson(response, 500, {
+        error: "Não foi possível ler os arquivos LoginSenha.txt.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/plan-credentials") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, {
+        plan: writePlanCredentials(REPORTS_ROOT, body.planId, body.version, body.fields),
+      });
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível salvar o arquivo LoginSenha.txt.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/tuss-tables") {
+    try {
+      const body = await readJsonBody(request, 5 * 1024 * 1024);
+      sendJson(response, 200, await saveTussTable(REPORTS_ROOT, body));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível salvar a tabela de ajuste TUSS.",
         detail: error.message,
       });
     }

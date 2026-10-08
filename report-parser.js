@@ -56,6 +56,125 @@ function findSection(lines, title, nextTitles = []) {
   return lines.slice(start + 1, end);
 }
 
+function fixedWidthColumns(line) {
+  const columns = [];
+  const pattern = /\S(?:.*?\S)?(?=\s{2,}|$)/g;
+  let match;
+  while ((match = pattern.exec(line)) !== null) {
+    columns.push({ label: clean(match[0]), start: match.index });
+  }
+  return columns;
+}
+
+function sliceFixedWidthRow(line, starts) {
+  return starts.map((start, index) => clean(line.slice(start, starts[index + 1] ?? line.length)));
+}
+
+function parsePaymentDescription(lines) {
+  const section = findSection(lines, "DESCRICAO PAGAMENTO", ["QTD DEMONSTRATIVOS"])
+    .filter((line) => clean(line) && !isDivider(line));
+  if (section.length < 2) return { columns: [], rows: [], total: [] };
+
+  const header = section[0];
+  const pipeDelimited = header.includes("|");
+  let columns;
+  let starts = [];
+  if (pipeDelimited) {
+    columns = header.split("|").map(clean).filter(Boolean);
+  } else {
+    const definitions = fixedWidthColumns(header);
+    columns = definitions.map((column) => column.label);
+    starts = definitions.map((column) => column.start);
+  }
+
+  const rows = [];
+  let total = [];
+  for (const line of section.slice(1)) {
+    const values = pipeDelimited
+      ? line.split("|").map(clean).filter((_, index, all) => !(index === 0 && !all[index]) && !(index === all.length - 1 && !all[index]))
+      : sliceFixedWidthRow(line, starts);
+    while (values.length < columns.length) values.push("");
+    const normalizedFirst = normalizeKey(values[0] || "");
+    if (normalizedFirst.startsWith("total")) total = values.slice(0, columns.length);
+    else if (values.some(Boolean)) rows.push(values.slice(0, columns.length));
+  }
+  return { columns, rows, total };
+}
+
+function paymentsFromDescription(description) {
+  const normalized = description.columns.map(normalizeKey);
+  const dateIndex = normalized.findIndex((column) => column.includes("data pagamento") || column.includes("previsao pagamento"));
+  const presentedIndex = normalized.findIndex((column) => column.includes("valor apresentado") || column.includes("valor producao"));
+  const paymentIndex = normalized.findIndex((column) => column.includes("valor liberado") || column.includes("valor pagamento"));
+  if (dateIndex < 0 || paymentIndex < 0) return [];
+
+  const grouped = new Map();
+  for (const values of description.rows) {
+    const paymentDate = values[dateIndex] || "";
+    if (!/^\d{2}\/\d{2}\/\d{4}$/.test(paymentDate)) continue;
+    const current = grouped.get(paymentDate) || { paymentDate, presentedCents: 0, paymentCents: 0, entries: 0 };
+    current.presentedCents += presentedIndex >= 0 ? parseMoney(values[presentedIndex]) : 0;
+    current.paymentCents += parseMoney(values[paymentIndex]);
+    current.entries += 1;
+    grouped.set(paymentDate, current);
+  }
+  return [...grouped.values()].sort((a, b) => a.paymentDate.localeCompare(b.paymentDate));
+}
+
+function extractDeclaredPaymentDates(lines) {
+  const start = lines.findIndex((line) => normalizeKey(line).startsWith("data do pagamento informado pelo convenio"));
+  if (start < 0) return [];
+  const dates = [];
+  for (let index = start; index < Math.min(lines.length, start + 10); index += 1) {
+    if (index > start && normalizeKey(lines[index]).startsWith("data de geracao do relatorio")) break;
+    dates.push(...(lines[index].match(/\b\d{2}\/\d{2}\/\d{4}\b/g) || []));
+  }
+  return [...new Set(dates)];
+}
+
+function parseGuideInformation(lines) {
+  const section = findSection(lines, "INFORMACOES GUIAS", ["OBSERVACOES", "FIM DO RELATORIO"]);
+  const groups = [];
+  let current = null;
+
+  function commit() {
+    if (current?.columns.length) groups.push(current);
+    current = null;
+  }
+
+  for (const line of section) {
+    const dateMatch = clean(line).match(/^Data de pagamento\s*:?[\s]*(\d{2}\/\d{2}\/\d{4})$/i);
+    if (dateMatch) {
+      commit();
+      current = { paymentDate: dateMatch[1], columns: [], rows: [], total: [], pipeDelimited: false, starts: [] };
+      continue;
+    }
+    if (!current || !clean(line) || isDivider(line)) continue;
+
+    if (current.columns.length === 0) {
+      current.pipeDelimited = line.includes("|");
+      if (current.pipeDelimited) {
+        current.columns = line.split("|").map(clean).filter(Boolean);
+      } else {
+        const definitions = fixedWidthColumns(line);
+        current.columns = definitions.map((column) => column.label);
+        current.starts = definitions.map((column) => column.start);
+      }
+      continue;
+    }
+
+    const values = current.pipeDelimited
+      ? line.split("|").map(clean).filter((value, index, all) => !((index === 0 || index === all.length - 1) && !value))
+      : sliceFixedWidthRow(line, current.starts);
+    while (values.length < current.columns.length) values.push("");
+    if (normalizeKey(values[0] || "").startsWith("total")) current.total = values.slice(0, current.columns.length);
+    else if (values.some(Boolean)) current.rows.push(values.slice(0, current.columns.length));
+  }
+  commit();
+
+  return groups.map(({ pipeDelimited, starts, ...group }) => group);
+}
+
 function parseItems(lines) {
   const section = findSection(lines, "TABELA DE DEMONSTRATIVOS", [
     "QUANTIDADE DE DEMONSTRATIVOS",
@@ -257,20 +376,23 @@ function parseReport(text, filePath, rootPath, stats = {}) {
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   const items = parseItems(lines);
   let paymentsByDate = parsePaymentsByDate(lines, items);
+  const paymentDescription = parsePaymentDescription(lines);
+  const guideInformation = parseGuideInformation(lines);
+  if (paymentsByDate.length === 0) paymentsByDate = paymentsFromDescription(paymentDescription);
   const downloads = parseDownloads(lines);
   const context = inferContext(filePath, rootPath);
   const paymentDates = [...new Set(paymentsByDate.map((item) => item.paymentDate).filter(Boolean))];
   if (paymentDates.length === 0) {
-    const declaredDates = findValue(lines, "Data do Pagamento informado pelo Convenio");
-    paymentDates.push(...declaredDates.split(/[,;|]/).map(clean).filter(Boolean));
+    paymentDates.push(...extractDeclaredPaymentDates(lines));
   }
 
   const taxesCents = sum(items, "pccCents") + sum(items, "irrfCents") + sum(items, "issCents") + sum(items, "inssCents");
   const productionCents = sum(items, "productionCents") || sum(paymentsByDate, "presentedCents") || extractSummaryMoney(lines, "SOMATORIO VALOR PRODUCAO") || extractSummaryMoney(lines, "Valor Apresentado");
   const paymentCents = sum(items, "paymentCents") || sum(paymentsByDate, "paymentCents") || extractSummaryMoney(lines, "SOMATORIO VALOR PAGAMENTO") || extractSummaryMoney(lines, "Valor Liberado");
   const summaryTaxes = extractSummaryMoney(lines, "SOMATORIO TOTAL DOS IMPOSTOS");
-  const requestedPeriod = findValue(lines, "Mes/Ano de pagamento solicitado") || findValue(lines, "Mes/Ano de pagamento desejado");
-  const periodParts = extractPeriodParts(requestedPeriod, context.period, paymentDates[0]);
+  const processedPeriodSource = findValue(lines, "Mes/ano processado") || findValue(lines, "Periodo pesquisado");
+  const requestedPeriod = findValue(lines, "Mes/Ano de pagamento solicitado") || findValue(lines, "Mes/Ano de pagamento desejado") || processedPeriodSource;
+  const periodParts = extractPeriodParts(requestedPeriod, processedPeriodSource, context.period, paymentDates[0]);
   if (paymentsByDate.length === 0 && paymentDates.length === 1) {
     paymentsByDate = [{ paymentDate: paymentDates[0], presentedCents: productionCents, paymentCents, entries: items.length || 1 }];
   }
@@ -284,7 +406,9 @@ function parseReport(text, filePath, rootPath, stats = {}) {
     ...context,
     title: clean(lines.find((line) => normalizeKey(line).includes("relatorio de demonstrativos de pagamento")) || "Relatório de demonstrativos de pagamento"),
     paymentDates,
+    paymentDateText: paymentDates.join(" · "),
     requestedPeriod,
+    processedPeriod: findValue(lines, "Mes/ano processado") || (periodParts.month && periodParts.year ? `${periodParts.monthName.toLocaleUpperCase("pt-BR")}/${periodParts.year}` : ""),
     periodMonth: periodParts.month,
     periodMonthName: periodParts.monthName,
     periodYear: periodParts.year,
@@ -293,6 +417,8 @@ function parseReport(text, filePath, rootPath, stats = {}) {
     operator: findValue(lines, "Operadora"),
     items,
     paymentsByDate,
+    paymentDescription,
+    guideInformation,
     downloads,
     observations: parseObservations(lines),
     fullSections: parseFullSections(lines),

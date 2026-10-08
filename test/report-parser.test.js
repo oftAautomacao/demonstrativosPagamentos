@@ -86,3 +86,93 @@ FIM DO RELATORIO`;
   assert.equal(report.totals.paymentCents, 12409635);
   assert.equal(report.requestedPeriod, "AGOSTO 2026");
 });
+
+test("interpreta DESCRICAO PAGAMENTO de largura fixa com total", () => {
+  const text = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - INTERMEDICA/HAPVIDA
+Data do Pagamento informado pelo Convenio: 20/09/2026
+Data de geracao do relatorio: 06/10/2026
+Mes/ano processado: SETEMBRO/2026
+DESCRICAO PAGAMENTO
+Numero Processo  Numero Lote  Previsao Pagamento  Valor Producao  Valor Pagamento  Download
+------------------------------------------------------------------------------------------------
+2660630295       1326         20/09/2026          3.500,00        3.500,00         OK (.xml + .xlsx)
+2660630252       1325         20/09/2026          680,00          680,00           OK (.xml + .xlsx)
+------------------------------------------------------------------------------------------------
+TOTAL                                             4.180,00        4.180,00
+QTD DEMONSTRATIVOS`;
+  const report = parseReport(text, "C:\\Claude\\DemonstPagProjeto\\Intermedica\\SETEMBRO_2026\\relatorio_Intermedica.txt", "C:\\Claude\\DemonstPagProjeto");
+
+  assert.equal(report.title, "RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - INTERMEDICA/HAPVIDA");
+  assert.equal(report.paymentDateText, "20/09/2026");
+  assert.equal(report.generatedAt, "06/10/2026");
+  assert.equal(report.processedPeriod, "SETEMBRO/2026");
+  assert.equal(report.paymentDescription.columns.length, 6);
+  assert.equal(report.paymentDescription.rows.length, 2);
+  assert.equal(report.paymentDescription.total[0], "TOTAL");
+  assert.equal(report.paymentsByDate[0].paymentCents, 418000);
+});
+
+test("interpreta DESCRICAO PAGAMENTO separada por barras e varias datas", () => {
+  const text = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - SULAMERICA
+Periodo pesquisado..: 01/09/2026 a 30/09/2026  (SETEMBRO 2026)
+Data do Pagamento informado pelo Convenio:
+  - 10/09/2026
+  - 17/09/2026
+Data de geracao do relatorio: 05/10/2026 19:21
+DESCRICAO PAGAMENTO
+Data Pagamento | Valor Apresentado | Valor Liberado | Download
+----------------------------------------------------------------
+10/09/2026 | R$ 4.600,00 | R$ 4.600,00 | OK (.xml + .pdf)
+17/09/2026 | R$ 189.489,85 | R$ 170.118,09 | OK (.xml + .pdf)
+----------------------------------------------------------------
+TOTAL | R$ 194.089,85 | R$ 174.718,09 |
+QTD DEMONSTRATIVOS`;
+  const report = parseReport(text, "C:\\Claude\\DemonstPagProjeto\\Sulamerica\\SETEMBRO_2026\\relatorio_Sulamerica.txt", "C:\\Claude\\DemonstPagProjeto");
+
+  assert.deepEqual(report.paymentDates, ["10/09/2026", "17/09/2026"]);
+  assert.equal(report.processedPeriod, "SETEMBRO/2026");
+  assert.equal(report.paymentDescription.rows.length, 2);
+  assert.equal(report.paymentDescription.total[2], "R$ 174.718,09");
+  assert.equal(report.paymentsByDate[1].paymentCents, 17011809);
+});
+
+test("interpreta INFORMACOES GUIAS por data em formatos fixo e separado por barras", () => {
+  const fixed = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - INTERMEDICA
+INFORMACOES GUIAS
+Data de pagamento 20/09/2026
+Guia               Valor Informado  Valor Liberado
+--------------------------------------------------
+288523239          500,00           500,00
+292027498          160,00           160,00
+--------------------------------------------------
+TOTAL (2 guias)    660,00           660,00
+OBSERVACOES`;
+  const fixedReport = parseReport(fixed, "C:\\Claude\\Intermedica\\SETEMBRO_2026\\relatorio_Intermedica.txt", "C:\\Claude");
+  assert.equal(fixedReport.guideInformation.length, 1);
+  assert.deepEqual(fixedReport.guideInformation[0].columns, ["Guia", "Valor Informado", "Valor Liberado"]);
+  assert.equal(fixedReport.guideInformation[0].rows.length, 2);
+  assert.equal(fixedReport.guideInformation[0].total[0], "TOTAL (2 guias)");
+
+  const pipes = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - SULAMERICA
+INFORMACOES GUIAS
+Data de pagamento: 10/09/2026
+Guia | Nome do Beneficiario | Valor Informado | Valor Liberado
+--------------------------------------------------------------
+212405168 | PACIENTE TESTE | R$ 4.600,00 | R$ 4.600,00
+TOTAL | 1 guia(s) | R$ 4.600,00 | R$ 4.600,00
+Data de pagamento: 17/09/2026
+Guia | Nome do Beneficiario | Valor Informado | Valor Liberado
+--------------------------------------------------------------
+232250718 | OUTRO PACIENTE | R$ 500,00 | R$ 450,00
+TOTAL | 1 guia(s) | R$ 500,00 | R$ 450,00
+FIM DO RELATORIO`;
+  const pipeReport = parseReport(pipes, "C:\\Claude\\Sulamerica\\SETEMBRO_2026\\relatorio_Sulamerica.txt", "C:\\Claude");
+  assert.equal(pipeReport.guideInformation.length, 2);
+  assert.equal(pipeReport.guideInformation[1].paymentDate, "17/09/2026");
+  assert.equal(pipeReport.guideInformation[0].rows[0][1], "PACIENTE TESTE");
+  assert.equal(pipeReport.guideInformation[1].total[3], "R$ 450,00");
+});
