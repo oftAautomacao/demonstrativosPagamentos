@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Painel local para consulta de demonstrativos de pagamento." />
     <title>Demonstrativos de pagamento</title>
-    <link rel="stylesheet" href="/styles.css?v=20260921" />
+    <link rel="stylesheet" href="/styles.css?v=20261008c" />
   </head>
   <body>
     <div class="app-shell">
@@ -18,35 +18,32 @@
           />
         </div>
 
-        <section class="period-filter" aria-labelledby="period-filter-title">
-          <span class="sidebar-label" id="period-filter-title">Competência</span>
-          <div class="sidebar-fields">
-            <label class="field">
-              <span>Mês</span>
-              <select id="month-select" aria-label="Escolher mês"></select>
-            </label>
-            <label class="field">
-              <span>Ano</span>
-              <select id="year-select" aria-label="Escolher ano"></select>
-            </label>
+        <section class="sidebar-control-panel" aria-label="Filtros e configurações">
+          <div class="sidebar-control-group sidebar-inline-control">
+            <div class="sidebar-inline-label">
+              <label class="sidebar-label" for="plan-select">Plano</label>
+              <span id="report-count" class="sidebar-count">0</span>
+            </div>
+            <select class="plan-select" id="plan-select" aria-label="Escolher plano disponível"></select>
+          </div>
+
+          <div class="sidebar-control-group sidebar-inline-control desired-date-group">
+            <span class="sidebar-label">Data desejada</span>
+            <form class="desired-date-panel" id="desired-date-panel">
+              <select class="plan-select desired-date-select" id="desired-date-select" aria-label="Escolher Data Desejada"></select>
+            </form>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="footer-status-row">
+              <div class="source-status"><span class="status-dot"></span><span id="scan-status">Lendo relatórios...</span></div>
+              <button id="refresh-button" class="refresh-button" type="button" title="Atualizar relatórios" aria-label="Atualizar relatórios">
+                <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>
+              </button>
+            </div>
+            <p class="source-path" title="Pasta monitorada"><span id="root-path"></span></p>
           </div>
         </section>
-
-        <div class="plans-heading">
-          <span class="sidebar-label">Planos disponíveis</span>
-          <span id="report-count" class="sidebar-count">0</span>
-        </div>
-        <nav class="plan-list" id="plan-list" aria-label="Planos disponíveis na competência"></nav>
-
-        <div class="sidebar-footer">
-          <div class="footer-status-row">
-            <div class="source-status"><span class="status-dot"></span><span id="scan-status">Lendo relatórios...</span></div>
-            <button id="refresh-button" class="refresh-button" type="button" title="Atualizar relatórios" aria-label="Atualizar relatórios">
-              <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>
-            </button>
-          </div>
-          <p class="source-path" title="Pasta monitorada"><span id="root-path"></span></p>
-        </div>
       </aside>
 
       <main class="page-shell">
@@ -77,29 +74,37 @@
                   <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg>
                 </span>
                 <div>
-                  <span class="plan-label">Demonstrativo financeiro</span>
-                  <h1 class="report-title-main">Relatório de Demonstrativo de Pagamento - <span id="agreement"></span></h1>
+                  <h1 class="report-title-main"><span id="agreement"></span></h1>
+                  <span class="report-subtitle">Demonstrativo de pagamento</span>
                 </div>
               </div>
-              <nav class="primary-tabs" aria-label="Mudar visualização do relatório">
-                <button type="button" class="primary-tab active" data-tab="overview" title="Demonstrativo" aria-label="Abrir demonstrativo">
-                  <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
-                </button>
-                <button type="button" class="primary-tab" data-tab="complete" title="Relatório completo" aria-label="Abrir relatório completo">
-                  <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg>
-                </button>
-                <button type="button" class="primary-tab" data-tab="tuss" title="Ajuste de códigos TUSS" aria-label="Abrir ajuste de códigos TUSS">
-                  <svg viewBox="0 0 24 24"><path d="m8 6-5 6 5 6M16 6l5 6-5 6M14 4l-4 16" /></svg>
-                </button>
-              </nav>
+              <div class="report-header-actions">
+                <div class="header-period-filter" aria-label="Navegar pelas competências disponíveis">
+                  <button id="period-previous" type="button" title="Competência anterior" aria-label="Ir para a competência anterior">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg>
+                  </button>
+                  <strong id="period-label">Carregando...</strong>
+                  <button id="period-next" type="button" title="Próxima competência" aria-label="Ir para a próxima competência">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                  </button>
+                </div>
+                <nav class="primary-tabs" aria-label="Mudar visualização do relatório">
+                  <button type="button" class="primary-tab active" data-tab="overview" title="Demonstrativo" aria-label="Abrir demonstrativo">
+                    <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
+                  </button>
+                  <button type="button" class="primary-tab" data-tab="complete" title="Relatório completo" aria-label="Abrir relatório completo">
+                    <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg>
+                  </button>
+                  <button type="button" class="primary-tab" data-tab="tuss" title="Ajuste de códigos TUSS" aria-label="Abrir ajuste de códigos TUSS">
+                    <svg viewBox="0 0 24 24"><path d="m8 6-5 6 5 6M16 6l5 6-5 6M14 4l-4 16" /></svg>
+                  </button>
+                </nav>
+              </div>
             </div>
           </header>
 
           <section class="primary-panel overview-content" id="overview-panel">
-            <section class="payments-section" aria-labelledby="payments-heading">
-            <div class="section-heading">
-              <div><div><span>Pagamentos do período</span><h2 id="payments-heading">TABELA DE DEMONSTRATIVOS DE CONTA MÉDICA</h2></div></div>
-            </div>
+            <section class="payments-section">
             <article class="panel table-panel payment-table-panel">
               <div class="table-scroll">
                 <table class="payment-summary-table">
@@ -124,14 +129,15 @@
         <section class="primary-panel hidden tuss-panel" id="tuss-panel" aria-labelledby="tuss-heading">
           <div class="tuss-heading-row">
             <div>
-              <span class="eyebrow">Correção de códigos</span>
               <h2 id="tuss-heading">Ajuste TUSS</h2>
-              <p>Compara os demonstrativos da competência com a tabela de ajuste cadastrada na pasta do plano.</p>
             </div>
-            <button class="tuss-refresh-button" id="tuss-refresh" type="button">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18 6l2 5M17.9 15A7 7 0 0 1 6 18l-2-5" /></svg>
-              Reanalisar
-            </button>
+            <div class="tuss-heading-actions">
+              <button class="tuss-refresh-button" id="tuss-refresh" type="button">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18 6l2 5M17.9 15A7 7 0 0 1 6 18l-2-5" /></svg>
+                Reanalisar
+              </button>
+              <button class="tuss-apply-button" id="tuss-apply" type="button" disabled>Gerar</button>
+            </div>
           </div>
 
           <div class="tuss-loading" id="tuss-loading">
@@ -145,25 +151,16 @@
           </div>
 
           <div class="tuss-content hidden" id="tuss-content">
-            <div class="tuss-source-row">
-              <span><small>Tabela de ajuste</small><strong id="tuss-mapping-file"></strong></span>
-              <span class="tuss-ready-pill">Pronta para comparar</span>
-            </div>
-
             <div class="tuss-stats" aria-label="Resumo da análise TUSS">
-              <div><small>Regras cadastradas</small><strong id="tuss-rule-count">0</strong></div>
               <div><small>Arquivos analisados</small><strong id="tuss-file-count">0</strong></div>
-              <div class="tuss-stat-highlight"><small>Correções encontradas</small><strong id="tuss-match-count">0</strong></div>
+              <div class="tuss-stat-highlight"><small>Correções</small><strong id="tuss-match-count">0</strong></div>
+              <div class="tuss-status-summary" id="tuss-status-summary"><small>Situação</small><strong id="tuss-status-text">Verificando</strong></div>
             </div>
 
             <div class="tuss-files" id="tuss-files"></div>
 
             <div class="tuss-action-bar">
-              <div>
-                <strong>Os arquivos originais serão preservados</strong>
-                <small>As cópias serão criadas na pasta “TUSS Corrigidos” dentro da competência selecionada.</small>
-              </div>
-              <button class="tuss-apply-button" id="tuss-apply" type="button">Gerar arquivos corrigidos</button>
+              <small>Os originais serão preservados. As cópias manterão os mesmos nomes na pasta “TUSS Corrigidos”.</small>
             </div>
           </div>
 
@@ -174,6 +171,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=20260921" defer></script>
+    <script src="/app.js?v=20261008e" defer></script>
   </body>
 </html>

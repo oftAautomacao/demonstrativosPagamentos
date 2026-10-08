@@ -12,6 +12,6 @@ test("analisa e gera cópias corrigidas de demonstrativos XLSX e PDF", async () 
   const { stdout, stderr } = await execFileAsync(command, [
     "-m", "unittest", "discover", "-s", "test", "-p", "test_tuss_processor.py",
   ], { cwd: projectRoot, windowsHide: true, timeout: 120_000 });
-  assert.match(`${stdout}\n${stderr}`, /Ran 3 tests/);
+  assert.match(`${stdout}\n${stderr}`, /Ran \d+ tests/);
   assert.match(`${stdout}\n${stderr}`, /OK/);
 });

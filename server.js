@@ -4,12 +4,14 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { loadReports } = require("./report-parser");
 const { analyzeTuss, applyTussCorrections } = require("./tuss-service");
+const { readControlDate, writeControlDate } = require("./control-date");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
 const PUBLIC_DIR = path.join(__dirname, "public");
 const LOCAL_REPORTS_CONFIG = path.join(__dirname, ".reports-root");
 const REPORTS_ROOT = getReportsRoot();
+const CONTROL_REPORT_PATH = path.join(REPORTS_ROOT, "Relatorio Controle.txt");
 const SHOULD_OPEN = process.argv.includes("--open");
 
 function getReportsRoot() {
@@ -108,6 +110,31 @@ const server = http.createServer(async (request, response) => {
         error: "Não foi possível ler os relatórios.",
         detail: error.message,
         rootPath: REPORTS_ROOT,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/control-date") {
+    try {
+      sendJson(response, 200, readControlDate(CONTROL_REPORT_PATH));
+    } catch (error) {
+      sendJson(response, 500, {
+        error: "Não foi possível ler a Data Desejada.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/control-date") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, writeControlDate(CONTROL_REPORT_PATH, body.month, body.year));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível salvar a Data Desejada.",
+        detail: error.message,
       });
     }
     return;

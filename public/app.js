@@ -8,15 +8,19 @@ const state = {
   tussApplied: new Set(),
   tussLoadingFor: null,
   tussRequestToken: 0,
+  desiredDateSaveTimer: null,
+  selectedMonth: 0,
+  selectedYear: 0,
 };
 
 const ids = [
   "root-path", "refresh-button", "report-count", "scan-status", "loading-state", "empty-state",
-  "error-state", "error-message", "error-retry", "report-view", "month-select", "year-select",
-  "plan-list", "agreement", "payments-body", "payments-foot",
+  "error-state", "error-message", "error-retry", "report-view", "period-previous", "period-label", "period-next",
+  "plan-select", "agreement", "payments-body", "payments-foot",
   "report-sections", "raw-report-text", "toast", "tuss-refresh", "tuss-loading", "tuss-unavailable",
-  "tuss-unavailable-title", "tuss-unavailable-message", "tuss-content", "tuss-mapping-file",
-  "tuss-rule-count", "tuss-file-count", "tuss-match-count", "tuss-files", "tuss-apply", "tuss-result",
+  "tuss-unavailable-title", "tuss-unavailable-message", "tuss-content", "tuss-file-count",
+  "tuss-match-count", "tuss-status-summary", "tuss-status-text", "tuss-files", "tuss-apply", "tuss-result",
+  "desired-date-panel", "desired-date-select",
 ];
 const elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -49,17 +53,6 @@ function newestReport(reports) {
   })[0];
 }
 
-function uniqueSorted(values, descending = false) {
-  const result = [...new Set(values)];
-  result.sort((a, b) => typeof a === "number" ? a - b : String(a).localeCompare(String(b), "pt-BR"));
-  return descending ? result.reverse() : result;
-}
-
-function fillSelect(select, values, selectedValue, labeler) {
-  select.innerHTML = values.map((value) => `<option value="${escapeHtml(String(value))}">${escapeHtml(labeler(value))}</option>`).join("");
-  select.value = String(selectedValue);
-}
-
 function reportsForPeriod(month, year) {
   return state.data.reports.filter((report) => report.periodMonth === month && report.periodYear === year);
 }
@@ -73,35 +66,61 @@ function plansForPeriod(month, year) {
   return [...byPlan.values()].sort((a, b) => a.agreement.localeCompare(b.agreement, "pt-BR"));
 }
 
-function renderPlanList(reports) {
+function availablePeriods() {
+  const periods = new Map();
+  for (const report of state.data?.reports || []) {
+    if (!report.periodMonth || !report.periodYear) continue;
+    periods.set(`${report.periodYear}-${report.periodMonth}`, {
+      month: report.periodMonth,
+      year: report.periodYear,
+    });
+  }
+  return [...periods.values()].sort((a, b) => (a.year * 100 + a.month) - (b.year * 100 + b.month));
+}
+
+function renderPlanSelect(reports) {
   elements["report-count"].textContent = reports.length;
-  elements["plan-list"].innerHTML = reports.map((report) => `
-    <button type="button" class="plan-item ${report.id === state.activeId ? "active" : ""}" data-report-id="${report.id}">
-      <span class="plan-item-icon"><svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg></span>
-      <span><strong>${escapeHtml(report.agreement)}</strong></span>
-      <span class="plan-chevron">›</span>
-    </button>
-  `).join("");
+  elements["plan-select"].innerHTML = reports.length
+    ? reports.map((report) => `<option value="${escapeHtml(report.id)}">${escapeHtml(report.agreement)}</option>`).join("")
+    : '<option value="">Nenhum plano disponível</option>';
+  elements["plan-select"].value = state.activeId || "";
+  elements["plan-select"].disabled = reports.length === 0;
 }
 
 function renderNavigation({ selectedMonth: forcedMonth = 0, selectedYear: forcedYear = 0 } = {}) {
   const current = activeReport() || newestReport(state.data.reports);
-  const years = uniqueSorted(state.data.reports.map((report) => report.periodYear).filter(Boolean), true);
-  const selectedYear = forcedYear || current?.periodYear || years[0];
-  const months = uniqueSorted(state.data.reports
-    .filter((report) => report.periodYear === selectedYear)
-    .map((report) => report.periodMonth)
-    .filter(Boolean), true);
-  const selectedMonth = forcedMonth || (current?.periodYear === selectedYear ? current.periodMonth : 0) || months[0];
+  const periods = availablePeriods();
+  let selectedIndex = periods.findIndex((period) => period.month === forcedMonth && period.year === forcedYear);
+  if (selectedIndex < 0) {
+    selectedIndex = periods.findIndex((period) => period.month === current?.periodMonth && period.year === current?.periodYear);
+  }
+  if (selectedIndex < 0) selectedIndex = periods.length - 1;
 
-  fillSelect(elements["month-select"], months.length ? months : [""], selectedMonth || "", (value) => monthNames[value] || "Não identificado");
-  fillSelect(elements["year-select"], years.length ? years : [""], selectedYear || "", (value) => value || "Não identificado");
-  elements["month-select"].disabled = months.length === 0;
-  elements["year-select"].disabled = years.length === 0;
+  const selectedPeriod = periods[selectedIndex];
+  const selectedMonth = selectedPeriod?.month || 0;
+  const selectedYear = selectedPeriod?.year || 0;
+  state.selectedMonth = selectedMonth;
+  state.selectedYear = selectedYear;
+  elements["period-label"].textContent = selectedPeriod
+    ? `${monthNames[selectedMonth]} ${selectedYear}`
+    : "Não identificado";
+  elements["period-previous"].disabled = selectedIndex <= 0;
+  elements["period-next"].disabled = selectedIndex < 0 || selectedIndex >= periods.length - 1;
 
-  const available = years.length ? plansForPeriod(Number(selectedMonth), Number(selectedYear)) : state.data.reports;
+  const available = selectedPeriod ? plansForPeriod(selectedMonth, selectedYear) : state.data.reports;
   if (!available.some((report) => report.id === state.activeId)) state.activeId = available[0]?.id || null;
-  renderPlanList(available);
+  renderPlanSelect(available);
+}
+
+function movePeriod(direction) {
+  const periods = availablePeriods();
+  const currentIndex = periods.findIndex((period) => (
+    period.month === state.selectedMonth && period.year === state.selectedYear
+  ));
+  const target = periods[currentIndex + direction];
+  if (!target) return;
+  renderNavigation({ selectedMonth: target.month, selectedYear: target.year });
+  renderActiveReport();
 }
 
 function renderPayments(report) {
@@ -147,15 +166,17 @@ function showTussState(stateName) {
 function renderTussUnavailable(title, message) {
   elements["tuss-unavailable-title"].textContent = title;
   elements["tuss-unavailable-message"].textContent = message;
+  elements["tuss-apply"].disabled = true;
   showTussState("unavailable");
 }
 
-function tussStatusLabel(file) {
-  if (file.status === "ready") return `${formatCount(file.totalMatches)} correção(ões)`;
-  if (file.status === "no_matches") return "Nenhum ajuste necessário";
-  if (file.status === "no_tuss_column") return "Coluna TUSS não encontrada";
-  if (file.status === "protected") return "Arquivo protegido";
-  return file.error || "Falha na análise";
+function tussStatus(file) {
+  if (file.correctionStatus === "corrected") return { icon: "✓", label: "Corrigido" };
+  if (file.correctionStatus === "pending") return { icon: "!", label: `Pendente · ${formatCount(file.totalMatches)} correção(ões)` };
+  if (file.correctionStatus === "not_needed") return { icon: "✓", label: "Sem ajuste necessário" };
+  if (file.status === "no_tuss_column") return { icon: "!", label: "Coluna TUSS não encontrada" };
+  if (file.status === "protected") return { icon: "!", label: "Arquivo protegido" };
+  return { icon: "!", label: file.error || "Falha na análise" };
 }
 
 function renderTussAnalysis(analysis) {
@@ -171,12 +192,17 @@ function renderTussAnalysis(analysis) {
     return;
   }
 
-  elements["tuss-mapping-file"].textContent = analysis.mapping.fileName;
-  elements["tuss-rule-count"].textContent = formatCount(analysis.mapping.totalRules);
   elements["tuss-file-count"].textContent = formatCount(analysis.totalFiles);
   elements["tuss-match-count"].textContent = formatCount(analysis.totalMatches);
-  elements["tuss-files"].innerHTML = analysis.files.map((file) => `
-    <article class="tuss-file ${file.status}">
+  elements["tuss-status-text"].textContent = analysis.allCorrected
+    ? "Tudo corrigido"
+    : `${formatCount(analysis.totalPendingFiles)} pendente(s)`;
+  elements["tuss-status-summary"].classList.toggle("is-corrected", analysis.allCorrected);
+  elements["tuss-status-summary"].classList.toggle("is-pending", !analysis.allCorrected);
+  elements["tuss-files"].innerHTML = analysis.files.map((file) => {
+    const correction = tussStatus(file);
+    return `
+    <article class="tuss-file ${file.status} ${file.correctionStatus || "unavailable"}">
       <div class="tuss-file-main">
         <span class="tuss-file-icon" aria-hidden="true">
           <svg viewBox="0 0 24 24"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg>
@@ -184,20 +210,16 @@ function renderTussAnalysis(analysis) {
         <span><strong>${escapeHtml(file.fileName)}</strong><small>${escapeHtml(file.relativePath)}</small></span>
       </div>
       <span class="tuss-format">${escapeHtml(file.format)}</span>
-      <span class="tuss-file-status">${escapeHtml(tussStatusLabel(file))}</span>
+      <span class="tuss-file-status"><span class="tuss-status-icon" aria-hidden="true">${correction.icon}</span>${escapeHtml(correction.label)}</span>
       ${file.replacements?.length ? `<div class="tuss-change-list">${file.replacements.map((change) => `
         <span><code>${escapeHtml(change.current)}</code><b>→</b><code>${escapeHtml(change.new)}</code><strong>${formatCount(change.count)}×</strong></span>
       `).join("")}</div>` : ""}
-    </article>
-  `).join("");
+    </article>`;
+  }).join("");
 
   const alreadyApplied = state.tussApplied.has(state.activeId);
-  elements["tuss-apply"].disabled = analysis.totalMatches === 0 || alreadyApplied;
-  elements["tuss-apply"].textContent = alreadyApplied
-    ? "Arquivos corrigidos gerados"
-    : analysis.totalMatches === 0
-      ? "Nenhuma correção necessária"
-      : "Gerar arquivos corrigidos";
+  elements["tuss-apply"].disabled = analysis.totalPendingMatches === 0 || alreadyApplied;
+  elements["tuss-apply"].textContent = "Gerar";
   showTussState("content");
 }
 
@@ -215,6 +237,7 @@ async function loadTussAnalysis({ force = false } = {}) {
   }
   const requestToken = ++state.tussRequestToken;
   state.tussLoadingFor = report.id;
+  elements["tuss-apply"].disabled = true;
   showTussState("loading");
   elements["tuss-result"].classList.add("hidden");
   try {
@@ -258,6 +281,69 @@ function showToast(message) {
   showToast.timer = setTimeout(() => elements.toast.classList.remove("visible"), 2200);
 }
 
+async function readApiResponse(response) {
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error(response.ok ? "O servidor retornou uma resposta inválida." : text || "Falha na comunicação com o servidor.");
+  }
+  if (!response.ok) throw new Error(data.detail || data.error || "Erro desconhecido");
+  return data;
+}
+
+function fillDesiredDates(selectedMonth, selectedYear) {
+  const dates = Array.from({ length: 5 }, (_, index) => {
+    const date = new Date(selectedYear, selectedMonth - 1 + index - 2, 1);
+    return { month: date.getMonth() + 1, year: date.getFullYear() };
+  });
+  elements["desired-date-select"].innerHTML = dates.map(({ month, year }) => {
+    const value = `${year}-${String(month).padStart(2, "0")}`;
+    return `<option value="${value}">${escapeHtml(`${monthNames[month]} ${year}`)}</option>`;
+  }).join("");
+  elements["desired-date-select"].value = `${selectedYear}-${String(selectedMonth).padStart(2, "0")}`;
+}
+
+async function loadDesiredDate() {
+  try {
+    const response = await fetch("/api/control-date", { cache: "no-store" });
+    const data = await readApiResponse(response);
+    fillDesiredDates(data.month, data.year);
+  } catch (error) {
+    fillDesiredDates(new Date().getMonth() + 1, new Date().getFullYear());
+    showToast(error.message);
+  }
+}
+
+async function saveDesiredDate() {
+  const panel = elements["desired-date-panel"];
+  const [year, month] = elements["desired-date-select"].value.split("-").map(Number);
+  panel.classList.add("saving");
+  try {
+    const response = await fetch("/api/control-date", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        month,
+        year,
+      }),
+    });
+    const data = await readApiResponse(response);
+    fillDesiredDates(data.month, data.year);
+    showToast(`Data Desejada: ${data.value}`);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    panel.classList.remove("saving");
+  }
+}
+
+function scheduleDesiredDateSave() {
+  clearTimeout(state.desiredDateSaveTimer);
+  state.desiredDateSaveTimer = setTimeout(saveDesiredDate, 300);
+}
+
 async function loadReports({ quiet = false } = {}) {
   if (!quiet) showOnly(elements["loading-state"]);
   elements["refresh-button"].classList.add("loading");
@@ -290,21 +376,17 @@ async function loadReports({ quiet = false } = {}) {
 
 elements["refresh-button"].addEventListener("click", () => loadReports({ quiet: true }));
 elements["error-retry"].addEventListener("click", () => loadReports());
-elements["plan-list"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-report-id]");
-  if (!button) return;
-  state.activeId = button.dataset.reportId;
-  renderPlanList(plansForPeriod(Number(elements["month-select"].value), Number(elements["year-select"].value)));
+elements["desired-date-select"].addEventListener("change", scheduleDesiredDateSave);
+elements["desired-date-panel"].addEventListener("submit", (event) => {
+  event.preventDefault();
+  scheduleDesiredDateSave();
+});
+elements["plan-select"].addEventListener("change", (event) => {
+  state.activeId = event.target.value;
   renderActiveReport();
 });
-elements["month-select"].addEventListener("change", (event) => {
-  renderNavigation({ selectedMonth: Number(event.target.value), selectedYear: Number(elements["year-select"].value) });
-  renderActiveReport();
-});
-elements["year-select"].addEventListener("change", (event) => {
-  renderNavigation({ selectedYear: Number(event.target.value) });
-  renderActiveReport();
-});
+elements["period-previous"].addEventListener("click", () => movePeriod(-1));
+elements["period-next"].addEventListener("click", () => movePeriod(1));
 document.querySelector(".primary-tabs").addEventListener("click", (event) => {
   const button = event.target.closest("[data-tab]");
   if (button) setActiveTab(button.dataset.tab);
@@ -313,15 +395,11 @@ elements["tuss-refresh"].addEventListener("click", () => loadTussAnalysis({ forc
 elements["tuss-apply"].addEventListener("click", async () => {
   const report = activeReport();
   const analysis = report ? state.tussCache.get(report.id) : null;
-  if (!report || !analysis || analysis.totalMatches === 0) return;
-  const confirmed = window.confirm(
-    `Serão criadas cópias corrigidas de ${analysis.totalFiles} arquivo(s), com ${analysis.totalMatches} substituição(ões). Os arquivos originais não serão alterados. Deseja continuar?`
-  );
-  if (!confirmed) return;
+  if (!report || !analysis || analysis.totalPendingMatches === 0) return;
 
   const button = elements["tuss-apply"];
   button.disabled = true;
-  button.textContent = "Gerando cópias...";
+  button.textContent = "Gerando...";
   try {
     const response = await fetch("/api/tuss-corrections", {
       method: "POST",
@@ -330,18 +408,19 @@ elements["tuss-apply"].addEventListener("click", async () => {
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.detail || data.error || "Erro desconhecido");
-    state.tussApplied.add(report.id);
+    await loadTussAnalysis({ force: true });
     elements["tuss-result"].innerHTML = data.applied
       ? `<strong>${formatCount(data.totalReplacements)} correção(ões) concluída(s)</strong><span>Arquivos criados em <code>${escapeHtml(data.outputFolder)}</code>.</span><ul>${data.outputs.map((item) => `<li>${escapeHtml(item.output)} — ${formatCount(item.replacements)} alteração(ões)</li>`).join("")}</ul>`
       : `<strong>Nenhuma correção necessária</strong><span>${escapeHtml(data.message || "Os códigos já estão atualizados.")}</span>`;
     elements["tuss-result"].classList.remove("hidden");
-    button.textContent = "Arquivos corrigidos gerados";
+    button.textContent = "Gerar";
     showToast("Correções TUSS concluídas");
   } catch (error) {
     button.disabled = false;
-    button.textContent = "Gerar arquivos corrigidos";
+    button.textContent = "Gerar";
     elements["tuss-result"].innerHTML = `<strong>Falha ao gerar os arquivos</strong><span>${escapeHtml(error.message)}</span>`;
     elements["tuss-result"].classList.remove("hidden");
   }
 });
 loadReports();
+loadDesiredDate();
