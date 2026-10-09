@@ -12,6 +12,6 @@ test("lê, edita e exclui linhas das tabelas de ajuste TUSS", async () => {
   const { stdout, stderr } = await execFileAsync(command, [
     "-m", "unittest", "discover", "-s", "test", "-p", "test_tuss_table_editor.py",
   ], { cwd: projectRoot, windowsHide: true, timeout: 60_000 });
-  assert.match(`${stdout}\n${stderr}`, /Ran 4 tests/);
+  assert.match(`${stdout}\n${stderr}`, /Ran 5 tests/);
   assert.match(`${stdout}\n${stderr}`, /OK/);
 });

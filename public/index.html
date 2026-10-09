@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Painel local para consulta de demonstrativos de pagamento." />
     <title>Demonstrativos de pagamento</title>
-    <link rel="stylesheet" href="/styles.css?v=20261008aa" />
+    <link rel="stylesheet" href="/styles.css?v=20261009k" />
   </head>
   <body>
     <div class="app-shell">
@@ -26,23 +26,41 @@
             </span>
             <span>Configuração</span>
           </button>
-          <button class="sidebar-nav-tab" id="plans-tab" type="button" data-sidebar-tab="plans">
-            <span class="sidebar-config-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><path d="M4 20V8l8-5 8 5v12M8 20v-7h8v7M2 20h20" /></svg>
-            </span>
-            <span>Convênios</span>
-          </button>
           <button class="sidebar-nav-tab" id="control-payments-tab" type="button" data-sidebar-tab="payments">
             <span class="sidebar-config-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 7h16v10H4zM4 10h16M8 14h3" /></svg>
             </span>
             <span>Pagamentos</span>
           </button>
+          <button class="sidebar-nav-tab" id="import-tab" type="button" data-sidebar-tab="import">
+            <span class="sidebar-config-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></svg>
+            </span>
+            <span>Importação</span>
+          </button>
           <button class="sidebar-nav-tab" id="demonstrative-tab" type="button" data-sidebar-tab="overview">
             <span class="sidebar-config-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
             </span>
             <span>Demonstrativo</span>
+          </button>
+          <button class="sidebar-nav-tab" id="guides-tab" type="button" data-sidebar-tab="guides">
+            <span class="sidebar-config-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 9h8M8 13h5M8 17h8" /></svg>
+            </span>
+            <span>Guias</span>
+          </button>
+          <button class="sidebar-nav-tab" id="medical-tab" type="button" data-sidebar-tab="medical">
+            <span class="sidebar-config-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4" /></svg>
+            </span>
+            <span>Conta médica</span>
+          </button>
+          <button class="sidebar-nav-tab" id="plans-tab" type="button" data-sidebar-tab="plans">
+            <span class="sidebar-config-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M4 20V8l8-5 8 5v12M8 20v-7h8v7M2 20h20" /></svg>
+            </span>
+            <span>Convênios</span>
           </button>
           </nav>
 
@@ -118,9 +136,6 @@
                     <button class="active" type="button" data-report-view="summary" title="Demonstrativo" aria-label="Abrir Demonstrativo">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z" /></svg>
                     </button>
-                    <button type="button" data-report-view="guides" title="Guias" aria-label="Abrir Guias">
-                      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h5M8 17h8" /></svg>
-                    </button>
                     <button type="button" data-report-view="full" title="Visualizar texto original do arquivo" aria-label="Visualizar texto original do arquivo">
                       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l3 3v15H6zM9 11h6M9 15h6M9 7h3" /></svg>
                     </button>
@@ -173,9 +188,15 @@
               <span>Lendo pagamentos...</span>
             </div>
             <div class="config-message hidden" id="control-payments-message" role="alert"></div>
-            <article class="config-table-panel hidden" id="control-payments-content">
+            <article class="tuss-table-card payments-table-card hidden" id="control-payments-content">
+              <header class="tuss-table-card-header">
+                <span class="tuss-table-plan">
+                  <span class="config-row-dot" aria-hidden="true"></span>
+                  <span><strong>Todos os convênios</strong></span>
+                </span>
+              </header>
               <div class="table-scroll">
-                <table class="config-table control-payments-table">
+                <table class="tuss-edit-table control-payments-table">
                   <thead>
                     <tr>
                       <th>Convênios</th>
@@ -232,39 +253,87 @@
               </details>
             </section>
 
-            <section class="guide-information hidden" id="guide-information">
-              <h2>Informações guias</h2>
-              <div class="guide-groups" id="guide-groups"></div>
-            </section>
+          </section>
 
+          <section class="primary-panel guide-information hidden" id="guides-panel">
+            <h2>Informações guias</h2>
+            <div class="guide-groups" id="guide-groups"></div>
+          </section>
+
+          <section class="primary-panel readonly-report-panel hidden" id="medical-panel">
+            <div class="readonly-heading-row">
+              <div>
+                <h2>Relatórios de conta médica</h2>
+                <p>Conteúdo somente para visualização.</p>
+              </div>
+              <div class="readonly-filters">
+                <label class="readonly-filter"><span>Convênio</span><select id="medical-plan-select"></select></label>
+                <label class="readonly-filter"><span>Relatório</span><select id="medical-file-select"></select></label>
+              </div>
+            </div>
+            <div class="tuss-loading" id="medical-loading"><span class="tuss-spinner" aria-hidden="true"></span><span>Lendo contas médicas...</span></div>
+            <div class="tuss-message hidden" id="medical-message" role="status"></div>
+            <article class="guide-group hidden" id="medical-content">
+              <header class="guide-group-heading">
+                <span><small id="medical-file-meta"></small><strong id="medical-file-name"></strong></span>
+                <span class="guide-count" id="medical-row-count"></span>
+              </header>
+              <div id="medical-table"></div>
+            </article>
+          </section>
+
+          <section class="primary-panel readonly-report-panel hidden" id="import-panel">
+            <div class="readonly-heading-row">
+              <div>
+                <h2>Relatórios de importação</h2>
+                <p>Informações registradas durante a importação realizada.</p>
+              </div>
+              <div class="readonly-filters">
+                <label class="readonly-filter"><span>Convênio</span><select id="import-plan-select"></select></label>
+                <label class="readonly-filter"><span>Relatório</span><select id="import-file-select"></select></label>
+              </div>
+            </div>
+            <div class="tuss-loading" id="import-loading"><span class="tuss-spinner" aria-hidden="true"></span><span>Lendo importações...</span></div>
+            <div class="tuss-message hidden" id="import-message" role="status"></div>
+            <article class="readonly-report-card hidden" id="import-content">
+              <div class="readonly-file-meta import-file-header">
+                <div class="import-file-title"><strong id="import-file-name"></strong><span id="import-file-meta"></span></div>
+                <nav class="import-inner-tabs" id="import-inner-tabs" aria-label="Visualizações do relatório de importação">
+                  <button class="active" type="button" data-import-view="summary" title="Tabelas principais" aria-label="Tabelas principais">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M10 5v14" /></svg>
+                  </button>
+                  <button type="button" data-import-view="full" title="Visualizar texto original do arquivo" aria-label="Visualizar texto original do arquivo">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h9l4 4v14H6zM14 3v5h5M9 12h7M9 16h7" /></svg>
+                  </button>
+                </nav>
+              </div>
+              <section class="import-summary-view" id="import-summary-view">
+                <div id="import-not-imported-table"></div>
+                <div id="import-invalid-patients-table"></div>
+              </section>
+              <section class="import-full-view hidden" id="import-full-view">
+                <pre id="import-raw-report"></pre>
+              </section>
+            </article>
           </section>
         </section>
 
         <section class="primary-panel hidden plans-panel" id="plans-panel" aria-label="Configurações dos convênios">
+          <div class="plan-context-bar">
+            <label class="plan-context-filter">
+              <span>Convênio</span>
+              <select id="plan-settings-select" aria-label="Escolher convênio"></select>
+            </label>
+          </div>
+
           <section class="plan-specific-view tuss-panel" id="plan-tuss-view">
           <h2 class="visually-hidden" id="tuss-heading">Ajuste TUSS</h2>
 
-          <nav class="tuss-workspace-tabs" id="tuss-workspace-tabs" aria-label="Áreas do Ajuste TUSS">
-            <button class="active" type="button" data-tuss-view="tables">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM4 10h16M10 5v14" /></svg>
-              Tabelas
-            </button>
-            <button type="button" data-tuss-view="analysis">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9M10 19V5M16 19v-7M3 19h18" /></svg>
-              Executar ajustes
-            </button>
-          </nav>
-
           <section class="tuss-table-editor-view" id="tuss-table-editor-view">
-            <div class="tuss-heading-row">
+            <div class="tuss-heading-row hidden">
               <div>
                 <h2>Tabelas por convênio</h2>
-                <p>Edite os dados diretamente nas planilhas de ajuste existentes.</p>
               </div>
-              <button class="tuss-refresh-button" id="tuss-table-refresh" type="button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18 6l2 5M17.9 15A7 7 0 0 1 6 18l-2-5" /></svg>
-                Atualizar
-              </button>
             </div>
 
             <div class="tuss-loading" id="tuss-table-loading">
@@ -318,15 +387,10 @@
           </section>
 
           <section class="plan-specific-view credentials-panel hidden" id="plan-credentials-view">
-            <div class="credentials-heading-row">
+            <div class="credentials-heading-row hidden">
               <div>
                 <h2>Acessos dos convênios</h2>
-                <p>Informações lidas diretamente do arquivo LoginSenha.txt de cada convênio.</p>
               </div>
-              <button class="tuss-refresh-button" id="plan-credentials-refresh" type="button">
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6v5h-5M4 18v-5h5M6.1 9A7 7 0 0 1 18 6l2 5M17.9 15A7 7 0 0 1 6 18l-2-5" /></svg>
-                Atualizar
-              </button>
             </div>
             <div class="tuss-loading" id="plan-credentials-loading">
               <span class="tuss-spinner" aria-hidden="true"></span>
@@ -340,7 +404,21 @@
       </main>
     </div>
 
+    <div class="app-dialog-backdrop hidden" id="app-dialog" aria-hidden="true">
+      <section class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="app-dialog-title" aria-describedby="app-dialog-message">
+        <div class="app-dialog-icon" aria-hidden="true">!</div>
+        <div class="app-dialog-content">
+          <h2 id="app-dialog-title">Confirmar ação</h2>
+          <p id="app-dialog-message"></p>
+        </div>
+        <div class="app-dialog-actions">
+          <button class="app-dialog-cancel" id="app-dialog-cancel" type="button">Cancelar</button>
+          <button class="app-dialog-confirm" id="app-dialog-confirm" type="button">Confirmar</button>
+        </div>
+      </section>
+    </div>
+
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=20261008aa" defer></script>
+    <script src="/app.js?v=20261009k" defer></script>
   </body>
 </html>

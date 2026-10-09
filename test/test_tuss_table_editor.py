@@ -71,6 +71,29 @@ class TussTableEditorTests(unittest.TestCase):
         self.assertEqual(worksheet["A1"].fill.fgColor.rgb[-6:], "0D766F")
         workbook.close()
 
+    def test_adds_a_row_and_expands_the_excel_table(self):
+        table = list_tables(self.root)["tables"][0]
+        submitted_rows = table["rows"] + [{
+            "values": ["ZZZ", "64700001", "98,70", "Pacote incluído pelo painel"]
+        }]
+
+        result = save_table(self.root, {
+            "tableId": table["id"],
+            "version": table["version"],
+            "rows": submitted_rows,
+        })
+
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["table"]["rowCount"], 3)
+        workbook = openpyxl.load_workbook(self.mapping)
+        worksheet = workbook["TUSS"]
+        self.assertEqual(worksheet["A4"].value, "ZZZ")
+        self.assertEqual(worksheet["B4"].value, "64700001")
+        self.assertEqual(worksheet["C4"].value, 98.7)
+        self.assertEqual(worksheet["D4"].value, "Pacote incluído pelo painel")
+        self.assertEqual(worksheet.tables["Tabela1"].ref, "A1:D4")
+        workbook.close()
+
     def test_accepts_the_established_xslx_file_name(self):
         renamed = self.mapping.with_suffix(".xslx")
         self.mapping.rename(renamed)

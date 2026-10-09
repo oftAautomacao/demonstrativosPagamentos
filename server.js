@@ -9,6 +9,7 @@ const { readControlDate, writeControlDate } = require("./control-date");
 const { readImportConfig, writeImportConfig } = require("./control-import");
 const { readControlPayments } = require("./control-payments");
 const { readPlanCredentials, writePlanCredentials } = require("./plan-credentials");
+const { readReadonlyReports } = require("./readonly-reports");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -175,6 +176,18 @@ const server = http.createServer(async (request, response) => {
     } catch (error) {
       sendJson(response, 500, {
         error: "Nao foi possivel ler os pagamentos e importacoes.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/readonly-reports") {
+    try {
+      sendJson(response, 200, readReadonlyReports(REPORTS_ROOT, requestUrl.searchParams.get("type")));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível ler os relatórios solicitados.",
         detail: error.message,
       });
     }

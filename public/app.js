@@ -1,32 +1,40 @@
 window.__painelCarregado = true;
 
+const sidebarTabByHash = {
+  "#configuracao": "config",
+  "#pagamentos": "payments",
+  "#convenios": "plans",
+  "#ajuste-tuss": "plans",
+  "#login-senha": "plans",
+  "#guias": "guides",
+  "#conta-medica": "medical",
+  "#importacao": "import",
+};
+
 const state = {
   data: null,
   activeId: null,
-  activeTab: window.location.hash === "#pagamentos"
-    ? "payments"
-    : ["#convenios", "#ajuste-tuss", "#login-senha"].includes(window.location.hash)
-      ? "plans"
-      : "config",
+  activeTab: sidebarTabByHash[window.location.hash] || "config",
   planView: window.location.hash === "#login-senha" ? "credentials" : "tuss",
+  selectedPlanName: "",
   reportInnerView: "summary",
+  importInnerView: "summary",
   tussCache: new Map(),
   tussApplied: new Set(),
   tussLoadingFor: null,
   tussRequestToken: 0,
-  tussWorkspaceView: "tables",
   tussTables: [],
   tussTablesLoaded: false,
-  tussTableSaveTimers: new Map(),
+  tussTablesLoading: false,
+  tussTableDirty: new Set(),
   tussTableRevisions: new Map(),
   tussTableSaving: new Set(),
-  tussTablePending: new Set(),
   planCredentials: [],
   planCredentialsLoaded: false,
-  planCredentialSaveTimers: new Map(),
+  planCredentialsLoading: false,
+  planCredentialDirty: new Set(),
   planCredentialRevisions: new Map(),
   planCredentialSaving: new Set(),
-  planCredentialPending: new Set(),
   desiredDateSaveTimer: null,
   selectedMonth: 0,
   selectedYear: 0,
@@ -36,6 +44,12 @@ const state = {
   importConfigSaveTimer: null,
   controlPayments: [],
   controlPaymentsLoaded: false,
+  readonlyDocuments: { medical: [], import: [] },
+  readonlyLoaded: { medical: false, import: false },
+  readonlySelection: {
+    medical: { planName: "", documentId: "" },
+    import: { planName: "", documentId: "" },
+  },
 };
 
 const ids = [
@@ -47,17 +61,23 @@ const ids = [
   "raw-report-text", "toast", "tuss-refresh", "tuss-loading", "tuss-unavailable",
   "tuss-unavailable-title", "tuss-unavailable-message", "tuss-content", "tuss-file-count",
   "tuss-match-count", "tuss-status-summary", "tuss-status-text", "tuss-files", "tuss-apply", "tuss-result",
-  "tuss-workspace-tabs", "tuss-table-editor-view", "tuss-analysis-view", "tuss-table-refresh",
+  "tuss-table-editor-view", "tuss-analysis-view",
   "tuss-table-loading", "tuss-table-message", "tuss-table-list",
-  "desired-date-panel", "desired-date-select", "config-tab", "plans-tab", "plan-inner-tabs", "report-internal-menu", "report-inner-tabs",
+  "desired-date-panel", "desired-date-select", "config-tab", "plans-tab", "plan-inner-tabs", "plan-settings-select", "report-internal-menu", "report-inner-tabs",
   "header-period-filter", "header-plan-filter", "report-subtitle", "demonstrative-summary", "embedded-full-report",
-  "guide-information", "guide-groups",
+  "guide-groups", "guides-tab", "medical-tab", "import-tab",
   "config-panel", "config-add", "config-loading", "config-message", "config-content",
   "config-rows",
   "control-payments-tab", "demonstrative-tab", "control-payments-loading", "control-payments-message",
   "control-payments-content", "control-payments-rows",
-  "plan-tuss-view", "plan-credentials-view", "plan-credentials-refresh", "plan-credentials-loading",
+  "plan-tuss-view", "plan-credentials-view", "plan-credentials-loading",
   "plan-credentials-message", "plan-credentials-list",
+  "medical-plan-select", "medical-file-select", "medical-loading", "medical-message", "medical-content",
+  "medical-file-name", "medical-file-meta", "medical-row-count", "medical-table",
+  "import-plan-select", "import-file-select", "import-loading", "import-message", "import-content",
+  "import-file-name", "import-file-meta", "import-inner-tabs", "import-summary-view", "import-full-view",
+  "import-not-imported-table", "import-invalid-patients-table", "import-raw-report",
+  "app-dialog", "app-dialog-title", "app-dialog-message", "app-dialog-cancel", "app-dialog-confirm",
 ];
 const elements = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
 const monthNames = ["", "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -159,7 +179,9 @@ function normalizedText(value = "") {
 }
 
 function descriptionCellClass(column) {
-  return /valor|pcc|irrf|iss|inss/.test(normalizedText(column)) ? "number" : "";
+  const normalized = normalizedText(column);
+  if (normalized.includes("glosa")) return "number glosa";
+  return /valor|falta|pcc|irrf|iss|inss/.test(normalized) ? "number" : "";
 }
 
 function renderPaymentDescription(report) {
@@ -319,12 +341,51 @@ function showTussTableMessage(message, isError = false) {
   elements["tuss-table-message"].classList.toggle("is-error", isError);
 }
 
+function availablePlanSettingsNames() {
+  const names = new Set();
+  for (const report of state.data?.reports || []) names.add(report.agreement);
+  for (const table of state.tussTables) names.add(table.planName);
+  for (const plan of state.planCredentials) names.add(plan.planName);
+  return [...names].filter(Boolean).sort((left, right) => left.localeCompare(right, "pt-BR"));
+}
+
+function updatePlanHeading() {
+  if (state.activeTab !== "plans") return;
+  const sectionTitle = state.planView === "tuss" ? "Ajuste TUSS" : "Login e senha";
+  const planName = state.selectedPlanName || "Convênios";
+  elements.agreement.innerHTML = `${escapeHtml(sectionTitle)} <span class="plan-heading-name">- ${escapeHtml(planName)}</span>`;
+  elements["report-subtitle"].textContent = "";
+  elements["report-subtitle"].classList.add("hidden");
+}
+
+function renderPlanSettingsSelect() {
+  const plans = availablePlanSettingsNames();
+  if (!plans.includes(state.selectedPlanName)) {
+    state.selectedPlanName = activeReport()?.agreement && plans.includes(activeReport().agreement)
+      ? activeReport().agreement
+      : plans[0] || "";
+  }
+  elements["plan-settings-select"].innerHTML = plans.length
+    ? plans.map((planName) => `<option value="${escapeHtml(planName)}">${escapeHtml(planName)}</option>`).join("")
+    : '<option value="">Nenhum convênio disponível</option>';
+  elements["plan-settings-select"].value = state.selectedPlanName;
+  elements["plan-settings-select"].disabled = plans.length === 0;
+  updatePlanHeading();
+}
+
 function renderTussTables() {
-  const tables = state.tussTables;
-  if (!tables.length) {
+  renderPlanSettingsSelect();
+  const tables = state.tussTables.filter((table) => table.planName === state.selectedPlanName);
+  if (!state.tussTables.length) {
     elements["tuss-table-list"].innerHTML = "";
     elements["tuss-table-list"].classList.add("hidden");
     showTussTableMessage("Nenhuma tabela Ajuste Codigo TUSS.xlsx foi encontrada nos convênios.");
+    return;
+  }
+  if (!tables.length) {
+    elements["tuss-table-list"].innerHTML = "";
+    elements["tuss-table-list"].classList.add("hidden");
+    showTussTableMessage(`Nenhuma tabela Ajuste Codigo TUSS.xlsx foi encontrada para ${state.selectedPlanName}.`);
     return;
   }
 
@@ -333,7 +394,12 @@ function renderTussTables() {
     <article class="tuss-table-card" data-table-id="${escapeHtml(table.id)}">
       <header class="tuss-table-card-header">
         <span class="tuss-table-plan"><span class="config-row-dot" aria-hidden="true"></span><span><strong>${escapeHtml(table.planName)}</strong><small>${escapeHtml(table.fileName)} · ${escapeHtml(table.sheetName)}</small></span></span>
-        <span class="tuss-table-save-status" data-table-status="${escapeHtml(table.id)}">Salvo</span>
+        <span class="tuss-table-card-actions">
+          <button class="tuss-table-add-row" type="button" data-tuss-add title="Adicionar linha à tabela">
+            <span aria-hidden="true">+</span> Adicionar linha
+          </button>
+          <button class="tuss-table-save-button" type="button" data-tuss-save ${state.tussTableDirty.has(table.id) ? "" : "disabled"}>Salvar</button>
+        </span>
       </header>
       <div class="table-scroll">
         <table class="tuss-edit-table">
@@ -357,19 +423,24 @@ function renderTussTables() {
   elements["tuss-table-list"].classList.remove("hidden");
 }
 
-async function loadTussTables({ force = false } = {}) {
+async function loadTussTables({ force = false, quiet = false } = {}) {
   if (state.tussTablesLoaded && !force) {
     renderTussTables();
     return;
   }
-  elements["tuss-table-loading"].classList.remove("hidden");
-  elements["tuss-table-list"].classList.add("hidden");
-  showTussTableMessage("");
+  if (state.tussTablesLoading) return;
+  state.tussTablesLoading = true;
+  if (!quiet) {
+    elements["tuss-table-loading"].classList.remove("hidden");
+    elements["tuss-table-list"].classList.add("hidden");
+    showTussTableMessage("");
+  }
   try {
     const response = await fetch("/api/tuss-tables", { cache: "no-store" });
     const data = await readApiResponse(response);
     state.tussTables = data.tables || [];
     state.tussTablesLoaded = true;
+    state.tussTableDirty.clear();
     state.tussTableRevisions.clear();
     renderTussTables();
     if (data.errors?.length) {
@@ -377,41 +448,57 @@ async function loadTussTables({ force = false } = {}) {
     }
   } catch (error) {
     state.tussTablesLoaded = false;
-    showTussTableMessage(error.message, true);
+    if (quiet) showToast(error.message);
+    else showTussTableMessage(error.message, true);
   } finally {
-    elements["tuss-table-loading"].classList.add("hidden");
+    state.tussTablesLoading = false;
+    if (!quiet) elements["tuss-table-loading"].classList.add("hidden");
   }
+}
+
+function canAutoRefreshPlanSettings() {
+  const activeElement = document.activeElement;
+  if (state.activeTab !== "plans" || document.visibilityState !== "visible") return false;
+  if (state.planView === "credentials") {
+    return state.planCredentialDirty.size === 0
+      && state.planCredentialSaving.size === 0
+      && !activeElement?.closest?.("#plan-credentials-list");
+  }
+  return state.planView === "tuss"
+    && document.visibilityState === "visible"
+    && state.tussTableDirty.size === 0
+    && state.tussTableSaving.size === 0
+    && !activeElement?.closest?.("#tuss-table-list");
+}
+
+function autoRefreshPlanSettings() {
+  if (!canAutoRefreshPlanSettings()) return;
+  if (state.planView === "credentials") loadPlanCredentials({ force: true, quiet: true });
+  else loadTussTables({ force: true, quiet: true });
 }
 
 function tussTableById(tableId) {
   return state.tussTables.find((table) => table.id === tableId);
 }
 
-function setTussTableStatus(tableId, text, stateName = "") {
-  const status = elements["tuss-table-list"].querySelector(`[data-table-status="${tableId}"]`);
-  if (!status) return;
-  status.textContent = text;
-  status.classList.toggle("is-saving", stateName === "saving");
-  status.classList.toggle("is-error", stateName === "error");
+function updateTussSaveButton(tableId, saving = false) {
+  const button = elements["tuss-table-list"].querySelector(`[data-table-id="${tableId}"] [data-tuss-save]`);
+  if (!button) return;
+  button.disabled = saving || !state.tussTableDirty.has(tableId);
+  button.textContent = saving ? "Salvando..." : "Salvar";
 }
 
-function scheduleTussTableSave(tableId, immediate = false) {
-  clearTimeout(state.tussTableSaveTimers.get(tableId));
-  setTussTableStatus(tableId, "Salvando...", "saving");
-  const timer = setTimeout(() => saveTussTable(tableId), immediate ? 0 : 650);
-  state.tussTableSaveTimers.set(tableId, timer);
+function markTussTableDirty(tableId) {
+  state.tussTableDirty.add(tableId);
+  updateTussSaveButton(tableId);
 }
 
 async function saveTussTable(tableId) {
   const table = tussTableById(tableId);
-  if (!table) return;
-  if (state.tussTableSaving.has(tableId)) {
-    state.tussTablePending.add(tableId);
-    return;
-  }
+  if (!table || !state.tussTableDirty.has(tableId) || state.tussTableSaving.has(tableId)) return;
 
   state.tussTableSaving.add(tableId);
-  state.tussTableSaveTimers.delete(tableId);
+  updateTussSaveButton(tableId, true);
   const revision = state.tussTableRevisions.get(tableId) || 0;
   const rows = table.rows.map((row) => ({ values: [...row.values] }));
   try {
@@ -425,17 +512,17 @@ async function saveTussTable(tableId) {
     if (currentRevision === revision) {
       const index = state.tussTables.findIndex((item) => item.id === tableId);
       if (index >= 0) state.tussTables[index] = data.table;
-      setTussTableStatus(tableId, "Salvo");
+      state.tussTableDirty.delete(tableId);
+      showToast("Tabela TUSS salva no arquivo Excel");
     } else {
       table.version = data.table.version;
-      state.tussTablePending.add(tableId);
+      state.tussTableDirty.add(tableId);
     }
   } catch (error) {
-    setTussTableStatus(tableId, "Erro ao salvar", "error");
     showToast(error.message);
   } finally {
     state.tussTableSaving.delete(tableId);
-    if (state.tussTablePending.delete(tableId)) scheduleTussTableSave(tableId, true);
+    updateTussSaveButton(tableId);
   }
 }
 
@@ -446,11 +533,18 @@ function showPlanCredentialsMessage(message, isError = false) {
 }
 
 function renderPlanCredentials() {
-  const plans = state.planCredentials;
-  if (!plans.length) {
+  renderPlanSettingsSelect();
+  const plans = state.planCredentials.filter((plan) => plan.planName === state.selectedPlanName);
+  if (!state.planCredentials.length) {
     elements["plan-credentials-list"].innerHTML = "";
     elements["plan-credentials-list"].classList.add("hidden");
     showPlanCredentialsMessage("Nenhum arquivo LoginSenha.txt foi encontrado nos convênios.");
+    return;
+  }
+  if (!plans.length) {
+    elements["plan-credentials-list"].innerHTML = "";
+    elements["plan-credentials-list"].classList.add("hidden");
+    showPlanCredentialsMessage(`Nenhum arquivo LoginSenha.txt foi encontrado para ${state.selectedPlanName}.`);
     return;
   }
 
@@ -459,7 +553,7 @@ function renderPlanCredentials() {
     <article class="credential-card" data-credential-id="${escapeHtml(plan.id)}">
       <header class="tuss-table-card-header">
         <span class="tuss-table-plan"><span class="config-row-dot" aria-hidden="true"></span><span><strong>${escapeHtml(plan.planName)}</strong><small>${escapeHtml(plan.fileName)}</small></span></span>
-        <span class="tuss-table-save-status" data-credential-status="${escapeHtml(plan.id)}">Salvo</span>
+        <button class="tuss-table-save-button credential-save-button ${state.planCredentialDirty.has(plan.id) ? "" : "hidden"}" type="button" data-credential-save>Salvar</button>
       </header>
       <div class="credential-fields">
         ${plan.fields.map((field) => `
@@ -477,27 +571,34 @@ function renderPlanCredentials() {
   elements["plan-credentials-list"].classList.remove("hidden");
 }
 
-async function loadPlanCredentials({ force = false } = {}) {
+async function loadPlanCredentials({ force = false, quiet = false } = {}) {
   if (state.planCredentialsLoaded && !force) {
     renderPlanCredentials();
     return;
   }
-  elements["plan-credentials-loading"].classList.remove("hidden");
-  elements["plan-credentials-list"].classList.add("hidden");
-  showPlanCredentialsMessage("");
+  if (state.planCredentialsLoading) return;
+  state.planCredentialsLoading = true;
+  if (!quiet) {
+    elements["plan-credentials-loading"].classList.remove("hidden");
+    elements["plan-credentials-list"].classList.add("hidden");
+    showPlanCredentialsMessage("");
+  }
   try {
     const response = await fetch("/api/plan-credentials", { cache: "no-store" });
     const data = await readApiResponse(response);
     state.planCredentials = data.plans || [];
     state.planCredentialsLoaded = true;
+    state.planCredentialDirty.clear();
     state.planCredentialRevisions.clear();
     renderPlanCredentials();
     if (data.errors?.length) showToast(`${data.errors.length} arquivo(s) de acesso precisam de atenção`);
   } catch (error) {
     state.planCredentialsLoaded = false;
-    showPlanCredentialsMessage(error.message, true);
+    if (quiet) showToast(error.message);
+    else showPlanCredentialsMessage(error.message, true);
   } finally {
-    elements["plan-credentials-loading"].classList.add("hidden");
+    state.planCredentialsLoading = false;
+    if (!quiet) elements["plan-credentials-loading"].classList.add("hidden");
   }
 }
 
@@ -505,30 +606,24 @@ function planCredentialById(planId) {
   return state.planCredentials.find((plan) => plan.id === planId);
 }
 
-function setPlanCredentialStatus(planId, text, stateName = "") {
-  const status = elements["plan-credentials-list"].querySelector(`[data-credential-status="${planId}"]`);
-  if (!status) return;
-  status.textContent = text;
-  status.classList.toggle("is-saving", stateName === "saving");
-  status.classList.toggle("is-error", stateName === "error");
+function updatePlanCredentialSaveButton(planId, saving = false) {
+  const button = elements["plan-credentials-list"].querySelector(`[data-credential-id="${planId}"] [data-credential-save]`);
+  if (!button) return;
+  button.classList.toggle("hidden", !saving && !state.planCredentialDirty.has(planId));
+  button.disabled = saving;
+  button.textContent = saving ? "Salvando..." : "Salvar";
 }
 
-function schedulePlanCredentialSave(planId, immediate = false) {
-  clearTimeout(state.planCredentialSaveTimers.get(planId));
-  setPlanCredentialStatus(planId, "Salvando...", "saving");
-  const timer = setTimeout(() => savePlanCredentials(planId), immediate ? 0 : 650);
-  state.planCredentialSaveTimers.set(planId, timer);
+function markPlanCredentialDirty(planId) {
+  state.planCredentialDirty.add(planId);
+  updatePlanCredentialSaveButton(planId);
 }
 
 async function savePlanCredentials(planId) {
   const plan = planCredentialById(planId);
-  if (!plan) return;
-  if (state.planCredentialSaving.has(planId)) {
-    state.planCredentialPending.add(planId);
-    return;
-  }
+  if (!plan || !state.planCredentialDirty.has(planId) || state.planCredentialSaving.has(planId)) return;
   state.planCredentialSaving.add(planId);
-  state.planCredentialSaveTimers.delete(planId);
+  updatePlanCredentialSaveButton(planId, true);
   const revision = state.planCredentialRevisions.get(planId) || 0;
   const fields = plan.fields.map((field) => ({ id: field.id, value: field.value }));
   try {
@@ -542,41 +637,189 @@ async function savePlanCredentials(planId) {
     if (currentRevision === revision) {
       const index = state.planCredentials.findIndex((item) => item.id === planId);
       if (index >= 0) state.planCredentials[index] = data.plan;
-      setPlanCredentialStatus(planId, "Salvo");
+      state.planCredentialDirty.delete(planId);
+      showToast("Login e senha salvos no arquivo");
     } else {
       plan.version = data.plan.version;
-      state.planCredentialPending.add(planId);
+      state.planCredentialDirty.add(planId);
     }
   } catch (error) {
-    setPlanCredentialStatus(planId, "Erro ao salvar", "error");
     showToast(error.message);
   } finally {
     state.planCredentialSaving.delete(planId);
-    if (state.planCredentialPending.delete(planId)) schedulePlanCredentialSave(planId, true);
+    updatePlanCredentialSaveButton(planId);
+  }
+}
+
+const readonlyReportLabels = {
+  medical: {
+    title: "Conta médica",
+    empty: "Nenhum relatório de conta médica foi encontrado.",
+  },
+  import: {
+    title: "Importação",
+    empty: "Nenhum relatório de importação foi encontrado.",
+  },
+};
+
+function readonlyElement(type, suffix) {
+  return elements[`${type}-${suffix}`];
+}
+
+function showReadonlyMessage(type, message, isError = false) {
+  const messageElement = readonlyElement(type, "message");
+  messageElement.textContent = message;
+  messageElement.classList.toggle("hidden", !message);
+  messageElement.classList.toggle("is-error", isError);
+}
+
+function renderMedicalTable(document) {
+  const table = document.medicalTable || { columns: [], rows: [], total: [] };
+  elements["medical-row-count"].textContent = `${table.rows.length.toLocaleString("pt-BR")} linha(s)`;
+  elements["medical-table"].innerHTML = table.columns.length
+    ? `<div class="table-scroll">
+        <table class="guide-table medical-guide-table${table.columns.length > 8 ? " is-wide" : ""}">
+          <thead><tr>${table.columns.map((column) => `<th class="${descriptionCellClass(column)}">${escapeHtml(column)}</th>`).join("")}</tr></thead>
+          <tbody>${table.rows.map((row) => `<tr>${table.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(row[index] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+          ${table.total?.length ? `<tfoot><tr>${table.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(table.total[index] || "")}</td>`).join("")}</tr></tfoot>` : ""}
+        </table>
+      </div>`
+    : '<div class="medical-table-empty">Não foi possível identificar a tabela neste relatório.</div>';
+}
+
+function importTableMarkup(title, table, emptyMessage) {
+  const safeTable = table || { columns: [], rows: [], total: [] };
+  return `<article class="guide-group import-table-group">
+    <header class="guide-group-heading">
+      <span><small>Resultado da importação</small><strong>${escapeHtml(title)}</strong></span>
+      <span class="guide-count">${safeTable.rows.length.toLocaleString("pt-BR")} linha(s)</span>
+    </header>
+    ${safeTable.columns.length
+      ? `<div class="table-scroll">
+          <table class="guide-table import-result-table${safeTable.columns.length > 7 ? " is-wide" : ""}">
+            <thead><tr>${safeTable.columns.map((column) => `<th class="${descriptionCellClass(column)}">${escapeHtml(column)}</th>`).join("")}</tr></thead>
+            <tbody>${safeTable.rows.map((row) => `<tr>${safeTable.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(row[index] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
+            ${safeTable.total?.length ? `<tfoot><tr>${safeTable.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(safeTable.total[index] || "")}</td>`).join("")}</tr></tfoot>` : ""}
+          </table>
+        </div>`
+      : `<div class="import-table-empty">${escapeHtml(emptyMessage)}</div>`}
+  </article>`;
+}
+
+function setImportView(view) {
+  state.importInnerView = view === "full" ? "full" : "summary";
+  elements["import-summary-view"].classList.toggle("hidden", state.importInnerView !== "summary");
+  elements["import-full-view"].classList.toggle("hidden", state.importInnerView !== "full");
+  elements["import-inner-tabs"].querySelectorAll("[data-import-view]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.importView === state.importInnerView);
+  });
+}
+
+function renderImportReport(document) {
+  const tables = document.importTables || {};
+  elements["import-not-imported-table"].innerHTML = importTableMarkup(
+    "LINHAS NÃO IMPORTADAS",
+    tables.notImported,
+    "Nenhuma linha não importada foi registrada neste relatório.",
+  );
+  elements["import-invalid-patients-table"].innerHTML = importTableMarkup(
+    "PACIENTES INEXISTENTE OU VALOR INCORRETO",
+    tables.invalidPatients,
+    "Nenhum paciente inexistente ou com valor incorreto foi registrado neste relatório.",
+  );
+  elements["import-raw-report"].textContent = document.rawText || "";
+  setImportView(state.importInnerView);
+}
+
+function renderReadonlyReports(type) {
+  const documents = state.readonlyDocuments[type] || [];
+  const selection = state.readonlySelection[type];
+  const planSelect = readonlyElement(type, "plan-select");
+  const fileSelect = readonlyElement(type, "file-select");
+  const content = readonlyElement(type, "content");
+  const plans = [...new Set(documents.map((document) => document.planName))]
+    .sort((left, right) => left.localeCompare(right, "pt-BR"));
+
+  if (!plans.length) {
+    selection.planName = "";
+    selection.documentId = "";
+    planSelect.innerHTML = '<option value="">Nenhum convênio disponível</option>';
+    fileSelect.innerHTML = '<option value="">Nenhum relatório disponível</option>';
+    planSelect.disabled = true;
+    fileSelect.disabled = true;
+    content.classList.add("hidden");
+    showReadonlyMessage(type, readonlyReportLabels[type].empty);
+    return;
+  }
+
+  if (!plans.includes(selection.planName)) selection.planName = plans[0];
+  planSelect.innerHTML = plans
+    .map((planName) => `<option value="${escapeHtml(planName)}">${escapeHtml(planName)}</option>`)
+    .join("");
+  planSelect.value = selection.planName;
+  planSelect.disabled = false;
+
+  const available = documents.filter((document) => document.planName === selection.planName);
+  if (!available.some((document) => document.id === selection.documentId)) {
+    selection.documentId = available[0]?.id || "";
+  }
+  fileSelect.innerHTML = available
+    .map((document) => `<option value="${escapeHtml(document.id)}">${escapeHtml(`${document.reportDate} · ${document.periodLabel}`)}</option>`)
+    .join("");
+  fileSelect.value = selection.documentId;
+  fileSelect.disabled = available.length === 0;
+
+  const document = available.find((item) => item.id === selection.documentId);
+  if (!document) {
+    content.classList.add("hidden");
+    showReadonlyMessage(type, readonlyReportLabels[type].empty);
+    return;
+  }
+
+  readonlyElement(type, "file-name").textContent = document.fileName;
+  readonlyElement(type, "file-meta").textContent = `${document.planName} · ${document.periodLabel} · ${document.relativePath}`;
+  if (type === "medical") renderMedicalTable(document);
+  else renderImportReport(document);
+  content.classList.remove("hidden");
+  showReadonlyMessage(type, "");
+
+  if (state.activeTab === type) {
+    elements.agreement.textContent = document.planName;
+    elements["report-subtitle"].textContent = readonlyReportLabels[type].title;
+    elements["report-subtitle"].classList.remove("hidden");
+  }
+}
+
+async function loadReadonlyReports(type, { force = false } = {}) {
+  if (state.readonlyLoaded[type] && !force) {
+    renderReadonlyReports(type);
+    return;
+  }
+
+  const loading = readonlyElement(type, "loading");
+  loading.classList.remove("hidden");
+  readonlyElement(type, "content").classList.add("hidden");
+  showReadonlyMessage(type, "");
+  try {
+    const response = await fetch(`/api/readonly-reports?type=${encodeURIComponent(type)}`, { cache: "no-store" });
+    const data = await readApiResponse(response);
+    state.readonlyDocuments[type] = data.documents || [];
+    state.readonlyLoaded[type] = true;
+    renderReadonlyReports(type);
+  } catch (error) {
+    state.readonlyLoaded[type] = false;
+    showReadonlyMessage(type, error.message, true);
+  } finally {
+    loading.classList.add("hidden");
   }
 }
 
 function updateReportSelectionVisibility() {
-  const visible = state.activeTab === "overview" || (
-    state.activeTab === "plans" && state.planView === "tuss" && state.tussWorkspaceView === "analysis"
-  );
+  const visible = ["overview", "guides"].includes(state.activeTab);
   elements["report-internal-menu"].classList.toggle("hidden", !visible);
   elements["header-period-filter"].classList.toggle("hidden", !visible);
   elements["header-plan-filter"].classList.toggle("hidden", !visible);
   elements["report-inner-tabs"].classList.toggle("hidden", state.activeTab !== "overview");
-}
-
-function setTussWorkspaceView(view) {
-  state.tussWorkspaceView = view === "analysis" ? "analysis" : "tables";
-  elements["tuss-table-editor-view"].classList.toggle("hidden", state.tussWorkspaceView !== "tables");
-  elements["tuss-analysis-view"].classList.toggle("hidden", state.tussWorkspaceView !== "analysis");
-  elements["tuss-workspace-tabs"].querySelectorAll("[data-tuss-view]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.tussView === state.tussWorkspaceView);
-  });
-  updateReportSelectionVisibility();
-  if (state.activeTab !== "plans" || state.planView !== "tuss") return;
-  if (state.tussWorkspaceView === "tables") loadTussTables();
-  else loadTussAnalysis();
 }
 
 function setPlanView(view) {
@@ -588,11 +831,10 @@ function setPlanView(view) {
   });
   updateReportSelectionVisibility();
   if (state.activeTab !== "plans") return;
-  elements.agreement.textContent = "Convênios";
-  elements["report-subtitle"].textContent = state.planView === "tuss" ? "Ajuste TUSS" : "Login e senha";
-  elements["report-subtitle"].classList.remove("hidden");
+  renderPlanSettingsSelect();
+  updatePlanHeading();
   history.replaceState(null, "", state.planView === "credentials" ? "#login-senha" : "#ajuste-tuss");
-  if (state.planView === "tuss") setTussWorkspaceView(state.tussWorkspaceView);
+  if (state.planView === "tuss") loadTussTables();
   else loadPlanCredentials();
 }
 
@@ -600,27 +842,28 @@ function renderActiveReport() {
   const report = activeReport();
   if (!report) return;
 
-  if (state.activeTab === "overview") elements.agreement.textContent = report.agreement;
+  if (["overview", "guides"].includes(state.activeTab)) elements.agreement.textContent = report.agreement;
 
   renderPaymentDescription(report);
   renderGuideInformation(report);
   renderFullReport(report);
-  if (state.activeTab === "plans" && state.planView === "tuss" && state.tussWorkspaceView === "analysis") loadTussAnalysis();
 }
 
 function setReportInnerView(view) {
-  state.reportInnerView = view;
-  elements["demonstrative-summary"].classList.toggle("hidden", view !== "summary");
-  elements["embedded-full-report"].classList.toggle("hidden", view !== "full");
-  elements["guide-information"].classList.toggle("hidden", view !== "guides");
+  state.reportInnerView = view === "full" ? "full" : "summary";
+  elements["demonstrative-summary"].classList.toggle("hidden", state.reportInnerView !== "summary");
+  elements["embedded-full-report"].classList.toggle("hidden", state.reportInnerView !== "full");
   elements["report-inner-tabs"].querySelectorAll("[data-report-view]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.reportView === view);
+    button.classList.toggle("active", button.dataset.reportView === state.reportInnerView);
   });
 }
 
 function setActiveTab(tab) {
   state.activeTab = tab;
-  document.querySelector(".report-title-group").classList.toggle("compact-title", ["config", "plans", "payments"].includes(tab));
+  const titleGroup = document.querySelector(".report-title-group");
+  titleGroup.classList.toggle("compact-title", ["config", "plans", "payments", "medical", "import"].includes(tab));
+  titleGroup.classList.toggle("plan-heading", tab === "plans");
+  elements.agreement.classList.toggle("plan-page-title", tab === "plans");
   document.querySelectorAll(".sidebar-nav-tab").forEach((button) => {
     button.classList.toggle("active", button.dataset.sidebarTab === tab);
   });
@@ -637,7 +880,16 @@ function setActiveTab(tab) {
     elements["report-subtitle"].textContent = "";
     elements["report-subtitle"].classList.add("hidden");
   } else if (tab === "plans") {
-    elements.agreement.textContent = "Convênios";
+    renderPlanSettingsSelect();
+    updatePlanHeading();
+  } else if (tab === "guides") {
+    elements.agreement.textContent = activeReport()?.agreement || "Guias";
+    elements["report-subtitle"].textContent = "Guias";
+    elements["report-subtitle"].classList.remove("hidden");
+  } else if (tab === "medical" || tab === "import") {
+    const selection = state.readonlySelection[tab];
+    elements.agreement.textContent = selection.planName || readonlyReportLabels[tab].title;
+    elements["report-subtitle"].textContent = readonlyReportLabels[tab].title;
     elements["report-subtitle"].classList.remove("hidden");
   } else {
     elements.agreement.textContent = activeReport()?.agreement || "Intermedica";
@@ -645,13 +897,21 @@ function setActiveTab(tab) {
     elements["report-subtitle"].classList.remove("hidden");
   }
   if (tab !== "plans") {
-    const hash = tab === "config" ? "#configuracao" : tab === "payments" ? "#pagamentos" : window.location.pathname;
+    const hashes = {
+      config: "#configuracao",
+      payments: "#pagamentos",
+      guides: "#guias",
+      medical: "#conta-medica",
+      import: "#importacao",
+    };
+    const hash = hashes[tab] || window.location.pathname;
     history.replaceState(null, "", hash);
   }
   if (tab === "overview") setReportInnerView("summary");
   if (tab === "config") loadImportConfig();
   if (tab === "payments") loadControlPayments();
   if (tab === "plans") setPlanView(state.planView);
+  if (tab === "medical" || tab === "import") loadReadonlyReports(tab);
 }
 
 function showToast(message) {
@@ -659,6 +919,31 @@ function showToast(message) {
   elements.toast.classList.add("visible");
   clearTimeout(showToast.timer);
   showToast.timer = setTimeout(() => elements.toast.classList.remove("visible"), 2200);
+}
+
+let appDialogResolve = null;
+
+function closeAppDialog(confirmed = false) {
+  elements["app-dialog"].classList.add("hidden");
+  elements["app-dialog"].setAttribute("aria-hidden", "true");
+  document.body.classList.remove("dialog-open");
+  const resolve = appDialogResolve;
+  appDialogResolve = null;
+  resolve?.(confirmed);
+}
+
+function confirmInApp({ title, message, confirmLabel = "Confirmar" }) {
+  if (appDialogResolve) closeAppDialog(false);
+  elements["app-dialog-title"].textContent = title;
+  elements["app-dialog-message"].textContent = message;
+  elements["app-dialog-confirm"].textContent = confirmLabel;
+  elements["app-dialog"].classList.remove("hidden");
+  elements["app-dialog"].setAttribute("aria-hidden", "false");
+  document.body.classList.add("dialog-open");
+  window.setTimeout(() => elements["app-dialog-cancel"].focus(), 0);
+  return new Promise((resolve) => {
+    appDialogResolve = resolve;
+  });
 }
 
 async function readApiResponse(response) {
@@ -894,15 +1179,22 @@ async function loadReports({ quiet = false } = {}) {
 }
 
 elements["refresh-button"].addEventListener("click", () => {
+  if (state.tussTableDirty.size || state.planCredentialDirty.size) {
+    showToast("Salve as alterações de Convênios antes de atualizar");
+    return;
+  }
   state.importConfigLoaded = false;
   state.controlPaymentsLoaded = false;
   state.tussTablesLoaded = false;
   state.planCredentialsLoaded = false;
+  state.readonlyLoaded.medical = false;
+  state.readonlyLoaded.import = false;
   loadReports({ quiet: true });
   if (state.activeTab === "config") loadImportConfig({ force: true });
   if (state.activeTab === "payments") loadControlPayments({ force: true });
-  if (state.activeTab === "plans" && state.planView === "tuss" && state.tussWorkspaceView === "tables") loadTussTables({ force: true });
+  if (state.activeTab === "plans" && state.planView === "tuss") loadTussTables({ force: true });
   if (state.activeTab === "plans" && state.planView === "credentials") loadPlanCredentials({ force: true });
+  if (state.activeTab === "medical" || state.activeTab === "import") loadReadonlyReports(state.activeTab, { force: true });
 });
 elements["error-retry"].addEventListener("click", () => loadReports());
 document.querySelector(".sidebar-navigation").addEventListener("click", (event) => {
@@ -913,19 +1205,13 @@ elements["report-inner-tabs"].addEventListener("click", (event) => {
   const button = event.target.closest("[data-report-view]");
   if (button) setReportInnerView(button.dataset.reportView);
 });
+elements["import-inner-tabs"].addEventListener("click", (event) => {
+  const button = event.target.closest("[data-import-view]");
+  if (button) setImportView(button.dataset.importView);
+});
 elements["plan-inner-tabs"].addEventListener("click", (event) => {
   const button = event.target.closest("[data-plan-view]");
   if (button) setPlanView(button.dataset.planView);
-});
-elements["tuss-workspace-tabs"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-tuss-view]");
-  if (button) setTussWorkspaceView(button.dataset.tussView);
-});
-elements["tuss-table-refresh"].addEventListener("click", async () => {
-  const pending = [...state.tussTableSaveTimers.keys()];
-  pending.forEach((tableId) => clearTimeout(state.tussTableSaveTimers.get(tableId)));
-  await Promise.all(pending.map((tableId) => saveTussTable(tableId)));
-  await loadTussTables({ force: true });
 });
 elements["tuss-table-list"].addEventListener("input", (event) => {
   const input = event.target.closest("[data-tuss-row][data-tuss-column]");
@@ -937,26 +1223,48 @@ elements["tuss-table-list"].addEventListener("input", (event) => {
   if (!table?.rows[row]) return;
   table.rows[row].values[column] = input.value;
   state.tussTableRevisions.set(table.id, (state.tussTableRevisions.get(table.id) || 0) + 1);
-  scheduleTussTableSave(table.id);
+  markTussTableDirty(table.id);
 });
-elements["tuss-table-list"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-tuss-remove]");
+elements["tuss-table-list"].addEventListener("click", async (event) => {
   const card = event.target.closest("[data-table-id]");
-  if (!button || !card) return;
+  if (!card) return;
   const table = tussTableById(card.dataset.tableId);
-  const row = Number(button.dataset.tussRemove);
-  if (!table?.rows[row]) return;
-  if (!window.confirm(`Excluir esta linha da tabela TUSS de ${table.planName}?`)) return;
+  if (!table) return;
+
+  const saveButton = event.target.closest("[data-tuss-save]");
+  if (saveButton) {
+    saveTussTable(table.id);
+    return;
+  }
+
+  const addButton = event.target.closest("[data-tuss-add]");
+  if (addButton) {
+    const rowIndex = table.rows.length;
+    table.rows.push({ values: table.columns.map(() => "") });
+    state.tussTableRevisions.set(table.id, (state.tussTableRevisions.get(table.id) || 0) + 1);
+    state.tussTableDirty.add(table.id);
+    renderTussTables();
+    const addedInput = elements["tuss-table-list"].querySelector(
+      `[data-table-id="${table.id}"] [data-tuss-row="${rowIndex}"][data-tuss-column="0"]`,
+    );
+    addedInput?.focus();
+    return;
+  }
+
+  const removeButton = event.target.closest("[data-tuss-remove]");
+  if (!removeButton) return;
+  const row = Number(removeButton.dataset.tussRemove);
+  if (!table.rows[row]) return;
+  const confirmed = await confirmInApp({
+    title: "Excluir linha da tabela TUSS?",
+    message: `A linha será removida de ${table.planName}. Clique em Salvar para gravar a exclusão no arquivo Excel.`,
+    confirmLabel: "Excluir",
+  });
+  if (!confirmed || !table.rows[row]) return;
   table.rows.splice(row, 1);
   state.tussTableRevisions.set(table.id, (state.tussTableRevisions.get(table.id) || 0) + 1);
+  state.tussTableDirty.add(table.id);
   renderTussTables();
-  scheduleTussTableSave(table.id, true);
-});
-elements["plan-credentials-refresh"].addEventListener("click", async () => {
-  const pending = [...state.planCredentialSaveTimers.keys()];
-  pending.forEach((planId) => clearTimeout(state.planCredentialSaveTimers.get(planId)));
-  await Promise.all(pending.map((planId) => savePlanCredentials(planId)));
-  await loadPlanCredentials({ force: true });
 });
 elements["plan-credentials-list"].addEventListener("input", (event) => {
   const input = event.target.closest("[data-credential-field]");
@@ -967,12 +1275,20 @@ elements["plan-credentials-list"].addEventListener("input", (event) => {
   if (!field) return;
   field.value = input.value;
   state.planCredentialRevisions.set(plan.id, (state.planCredentialRevisions.get(plan.id) || 0) + 1);
-  schedulePlanCredentialSave(plan.id);
+  markPlanCredentialDirty(plan.id);
 });
 elements["plan-credentials-list"].addEventListener("click", (event) => {
-  const button = event.target.closest("[data-credential-reveal]");
   const card = event.target.closest("[data-credential-id]");
-  if (!button || !card) return;
+  if (!card) return;
+  const plan = planCredentialById(card.dataset.credentialId);
+  if (!plan) return;
+  const saveButton = event.target.closest("[data-credential-save]");
+  if (saveButton) {
+    savePlanCredentials(plan.id);
+    return;
+  }
+  const button = event.target.closest("[data-credential-reveal]");
+  if (!button) return;
   const input = card.querySelector(`[data-credential-field="${button.dataset.credentialReveal}"]`);
   if (!input) return;
   const revealing = input.type === "password";
@@ -1018,6 +1334,23 @@ elements["plan-select"].addEventListener("change", (event) => {
   state.activeId = event.target.value;
   renderActiveReport();
 });
+elements["plan-settings-select"].addEventListener("change", (event) => {
+  state.selectedPlanName = event.target.value;
+  updatePlanHeading();
+  if (state.planView === "tuss") renderTussTables();
+  else renderPlanCredentials();
+});
+for (const type of ["medical", "import"]) {
+  readonlyElement(type, "plan-select").addEventListener("change", (event) => {
+    state.readonlySelection[type].planName = event.target.value;
+    state.readonlySelection[type].documentId = "";
+    renderReadonlyReports(type);
+  });
+  readonlyElement(type, "file-select").addEventListener("change", (event) => {
+    state.readonlySelection[type].documentId = event.target.value;
+    renderReadonlyReports(type);
+  });
+}
 elements["period-previous"].addEventListener("click", () => movePeriod(-1));
 elements["period-next"].addEventListener("click", () => movePeriod(1));
 elements["tuss-refresh"].addEventListener("click", () => loadTussAnalysis({ force: true }));
@@ -1050,6 +1383,17 @@ elements["tuss-apply"].addEventListener("click", async () => {
     elements["tuss-result"].innerHTML = `<strong>Falha ao gerar os arquivos</strong><span>${escapeHtml(error.message)}</span>`;
     elements["tuss-result"].classList.remove("hidden");
   }
+});
+window.addEventListener("focus", autoRefreshPlanSettings);
+document.addEventListener("visibilitychange", autoRefreshPlanSettings);
+setInterval(autoRefreshPlanSettings, 30_000);
+elements["app-dialog-cancel"].addEventListener("click", () => closeAppDialog(false));
+elements["app-dialog-confirm"].addEventListener("click", () => closeAppDialog(true));
+elements["app-dialog"].addEventListener("click", (event) => {
+  if (event.target === elements["app-dialog"]) closeAppDialog(false);
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && !elements["app-dialog"].classList.contains("hidden")) closeAppDialog(false);
 });
 loadReports();
 loadDesiredDate();
