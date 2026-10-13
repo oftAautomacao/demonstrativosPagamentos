@@ -29,7 +29,8 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
 
 .app-shell { height: 100vh; min-height: 0; display: grid; grid-template-columns: 292px minmax(0, 1fr); overflow: hidden; }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 18px 18px 18px; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(180deg, #0a2b40, #071e2e); color: #fff; box-shadow: 8px 0 28px rgba(7,31,48,.08); }
-.sidebar::before { display: none; }
+.sidebar::before { content: ""; width: 350px; aspect-ratio: 1; position: absolute; right: -132px; bottom: -84px; z-index: 0; background: url("/image/logo-lobo-olho.jpg") center / contain no-repeat; filter: grayscale(1) invert(1); mix-blend-mode: screen; opacity: .065; pointer-events: none; }
+.sidebar > * { position: relative; z-index: 1; }
 .brand { display: flex; align-items: center; justify-content: center; min-height: 46px; padding: 0 6px 13px; }
 .brand-logo { display: block; width: 100%; max-width: 205px; height: auto; object-fit: contain; object-position: center; }
 .sidebar-label { color: #89a0b7; font-size: .66rem; font-weight: 800; letter-spacing: .09em; text-transform: uppercase; }
@@ -647,6 +648,7 @@ body.dialog-open { overflow: hidden; }
   body { overflow-x: hidden; overflow-y: auto; }
   .app-shell { height: auto; min-height: 100vh; display: block; overflow: visible; }
   .sidebar { position: static; width: 100vw; max-width: 100%; height: auto; padding: 16px; overflow-x: hidden; }
+  .sidebar::before { width: 290px; right: -90px; bottom: -95px; opacity: .055; }
   .sidebar-control-panel, .sidebar-footer { width: 100%; min-width: 0; }
   .brand { min-height: 44px; padding-bottom: 12px; }
   .brand-logo { max-width: 152px; }
