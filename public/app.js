@@ -673,8 +673,40 @@ function showReadonlyMessage(type, message, isError = false) {
   messageElement.classList.toggle("is-error", isError);
 }
 
+function medicalTableWithGlosa(sourceTable) {
+  const table = sourceTable || { columns: [], rows: [], total: [] };
+  const normalizedColumns = table.columns.map(normalizedText);
+  if (normalizedColumns.includes("glosa")) return table;
+  const valueIndex = normalizedColumns.findIndex((column) => column === "valor");
+  const informedIndex = normalizedColumns.findIndex((column) => column === "valor informado");
+  if (valueIndex < 0 || informedIndex < 0) return table;
+
+  const parseMoney = (value) => {
+    const normalized = String(value || "").replace(/R\$/gi, "").replace(/\s/g, "").replace(/\./g, "").replace(",", ".");
+    const number = Number.parseFloat(normalized);
+    return Number.isFinite(number) ? number : null;
+  };
+  const addGlosa = (values) => {
+    const row = [...values];
+    const value = parseMoney(values[valueIndex]);
+    const informed = parseMoney(values[informedIndex]);
+    const glosa = value === null || informed === null
+      ? ""
+      : new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(informed - value).replace(/\s/g, " ");
+    row.splice(informedIndex + 1, 0, glosa);
+    return row;
+  };
+  const columns = [...table.columns];
+  columns.splice(informedIndex + 1, 0, "Glosa");
+  return {
+    columns,
+    rows: table.rows.map(addGlosa),
+    total: table.total?.length ? addGlosa(table.total) : [],
+  };
+}
+
 function renderMedicalTable(document) {
-  const table = document.medicalTable || { columns: [], rows: [], total: [] };
+  const table = medicalTableWithGlosa(document.medicalTable);
   elements["medical-row-count"].textContent = `${table.rows.length.toLocaleString("pt-BR")} linha(s)`;
   elements["medical-table"].innerHTML = table.columns.length
     ? `<div class="table-scroll">
@@ -687,17 +719,87 @@ function renderMedicalTable(document) {
     : '<div class="medical-table-empty">Não foi possível identificar a tabela neste relatório.</div>';
 }
 
+function splitImportPipeRow(line) {
+  const values = String(line).split("|").map((value) => value.trim().replace(/\s+/g, " "));
+  if (!values[0]) values.shift();
+  if (!values.at(-1)) values.pop();
+  return values;
+}
+
+function parseImportTablesFromText(rawText = "") {
+  const lines = String(rawText).replace(/\r\n?/g, "\n").split("\n");
+  const notImported = { columns: [], rows: [], total: [] };
+  const invalidPatients = { columns: [], rows: [], total: [] };
+
+  const notImportedHeader = lines.findIndex((line) => line.includes("|") && normalizedText(line).includes("numero guia"));
+  if (notImportedHeader >= 0) {
+    notImported.columns = splitImportPipeRow(lines[notImportedHeader]);
+    for (let index = notImportedHeader + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/^\s*_{5,}\s*$/.test(line) && notImported.rows.length) break;
+      if (!line.includes("|")) continue;
+      const values = splitImportPipeRow(line);
+      if (values.every((value) => !value || /^-+$/.test(value))) continue;
+      while (values.length < notImported.columns.length) values.push("");
+      if (values.slice(0, -1).every((value) => !value) && values.at(-1) && notImported.rows.length) {
+        const previous = notImported.rows.at(-1);
+        previous[notImported.columns.length - 1] = `${previous.at(-1)} ${values.at(-1)}`.trim();
+      } else {
+        notImported.rows.push(values.slice(0, notImported.columns.length));
+      }
+    }
+    const totalMatch = lines.find((line) => normalizedText(line).startsWith("soma das"))?.match(/Soma das\s+(\d+)\s+linhas\s*:\s*(R\$\s*[\d.]+,\d{2})/i);
+    if (totalMatch) {
+      notImported.total = Array.from({ length: notImported.columns.length }, () => "");
+      notImported.total[0] = `TOTAL (${totalMatch[1]} linhas)`;
+      const valueIndex = notImported.columns.findIndex((column) => normalizedText(column).includes("valor recebido"));
+      if (valueIndex >= 0) notImported.total[valueIndex] = totalMatch[2].trim();
+    }
+  }
+
+  const invalidHeader = lines.findIndex((line) => normalizedText(line).startsWith("guia") && normalizedText(line).includes("nome do beneficiario") && normalizedText(line).includes("valor informado"));
+  if (invalidHeader >= 0) {
+    invalidPatients.columns = ["Guia", "Nome do Beneficiário", "Valor Informado", "Valor Liberado", "Falta", "Status"];
+    const rowPattern = /^\s*(\S+)\s{2,}(.+?)\s{2,}([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+([\d.]+,\d{2})\s+(.+?)\s*$/;
+    for (let index = invalidHeader + 1; index < lines.length; index += 1) {
+      const line = lines[index];
+      if (/^\s*-{5,}\s*$/.test(line) && invalidPatients.rows.length) break;
+      const match = line.match(rowPattern);
+      if (match) invalidPatients.rows.push(match.slice(1).map((value) => value.trim().replace(/\s+/g, " ")));
+    }
+    const totalMatch = lines.find((line) => normalizedText(line).startsWith("total em aberto"))?.match(/Total em aberto\s*:\s*(R\$\s*[\d.]+,\d{2})/i);
+    if (totalMatch) {
+      invalidPatients.total = Array.from({ length: invalidPatients.columns.length }, () => "");
+      invalidPatients.total[0] = "TOTAL EM ABERTO";
+      invalidPatients.total[4] = totalMatch[1].trim();
+    }
+  }
+
+  return { notImported, invalidPatients };
+}
+
+function importColumnLabel(column) {
+  const normalized = normalizedText(column);
+  const labels = {
+    "referencia tuss": "Referência<br>TUSS",
+    "valor recebido": "Valor<br>Recebido",
+    "valor informado": "Valor<br>Informado",
+    "valor liberado": "Valor<br>Liberado",
+  };
+  return labels[normalized] || escapeHtml(column);
+}
+
 function importTableMarkup(title, table, emptyMessage) {
   const safeTable = table || { columns: [], rows: [], total: [] };
   return `<article class="guide-group import-table-group">
     <header class="guide-group-heading">
-      <span><small>Resultado da importação</small><strong>${escapeHtml(title)}</strong></span>
+      <span><strong>${escapeHtml(title)}</strong></span>
       <span class="guide-count">${safeTable.rows.length.toLocaleString("pt-BR")} linha(s)</span>
     </header>
     ${safeTable.columns.length
       ? `<div class="table-scroll">
           <table class="guide-table import-result-table${safeTable.columns.length > 7 ? " is-wide" : ""}">
-            <thead><tr>${safeTable.columns.map((column) => `<th class="${descriptionCellClass(column)}">${escapeHtml(column)}</th>`).join("")}</tr></thead>
+            <thead><tr>${safeTable.columns.map((column) => `<th class="${descriptionCellClass(column)}">${importColumnLabel(column)}</th>`).join("")}</tr></thead>
             <tbody>${safeTable.rows.map((row) => `<tr>${safeTable.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(row[index] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
             ${safeTable.total?.length ? `<tfoot><tr>${safeTable.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(safeTable.total[index] || "")}</td>`).join("")}</tr></tfoot>` : ""}
           </table>
@@ -716,7 +818,9 @@ function setImportView(view) {
 }
 
 function renderImportReport(document) {
-  const tables = document.importTables || {};
+  const parsedTables = parseImportTablesFromText(document.rawText || "");
+  const parsedHasRows = parsedTables.notImported.rows.length || parsedTables.invalidPatients.rows.length;
+  const tables = parsedHasRows ? parsedTables : (document.importTables || parsedTables);
   elements["import-not-imported-table"].innerHTML = importTableMarkup(
     "LINHAS NÃO IMPORTADAS",
     tables.notImported,
