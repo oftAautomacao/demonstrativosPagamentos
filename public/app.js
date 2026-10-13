@@ -57,7 +57,7 @@ const ids = [
   "error-state", "error-message", "error-retry", "report-view", "period-previous", "period-label", "period-next",
   "plan-select", "agreement",
   "report-document-title", "report-payment-date", "report-generated-date", "report-processed-period",
-  "description-payment-head", "description-payment-body", "description-payment-foot",
+  "description-payment-columns", "description-payment-head", "description-payment-body", "description-payment-foot",
   "raw-report-text", "toast", "tuss-refresh", "tuss-loading", "tuss-unavailable",
   "tuss-unavailable-title", "tuss-unavailable-message", "tuss-content", "tuss-file-count",
   "tuss-match-count", "tuss-status-summary", "tuss-status-text", "tuss-files", "tuss-apply", "tuss-result",
@@ -180,8 +180,58 @@ function normalizedText(value = "") {
 
 function descriptionCellClass(column) {
   const normalized = normalizedText(column);
-  if (normalized.includes("glosa")) return "number glosa";
-  return /valor|falta|pcc|irrf|iss|inss/.test(normalized) ? "number" : "";
+  const classes = [];
+  if (/valor|glosa|falta|pcc|irrf|iss|inss/.test(normalized)) classes.push("number");
+  if (normalized.includes("glosa")) classes.push("glosa");
+  if (/data|previsao/.test(normalized)) classes.push("date-cell");
+  if (/numero|processo|lote|guia|codigo/.test(normalized)) classes.push("identifier-cell");
+  if (/download|arquivo/.test(normalized)) classes.push("download-cell");
+  if (/nome|beneficiario|descricao|observacao|paciente/.test(normalized)) classes.push("text-cell");
+  if (normalized === "valor producao") classes.push("value-production");
+  if (normalized.includes("previsao pagamento")) classes.push("payment-forecast");
+  return classes.join(" ");
+}
+
+function descriptionColumnWeight(column, index, description) {
+  const normalized = normalizedText(column);
+  const rows = [...(description.rows || []), ...(description.total?.length ? [description.total] : [])];
+  const longestValue = rows.reduce((length, row) => Math.max(length, String(row[index] || "").trim().length), 0);
+  const longestWord = String(column).trim().split(/\s+/).reduce((length, word) => Math.max(length, word.length), 0);
+  if (/^pcc|^irrf|^iss|^inss/.test(normalized)) return Math.max(7, Math.min(longestValue, 10));
+  if (/data|previsao/.test(normalized)) return Math.max(10, Math.min(longestValue, 12));
+  if (/valor|glosa|falta/.test(normalized)) return Math.max(8, Math.min(longestValue, 12));
+  if (/numero|codigo|guia|lote|processo|tuss|documento/.test(normalized)) return Math.max(7, Math.min(longestValue, 13));
+  if (/nome|beneficiario|descricao|observacao|paciente|download|arquivo|status/.test(normalized)) {
+    return Math.max(12, Math.min(Math.max(longestValue, longestWord), 18));
+  }
+  return Math.max(7, Math.min(Math.max(longestValue, longestWord), 16));
+}
+
+function descriptionColumnWidths(description) {
+  const weights = description.columns.map((column, index) => descriptionColumnWeight(column, index, description));
+  const total = weights.reduce((sum, weight) => sum + weight, 0) || 1;
+  return weights.map((weight) => (weight / total) * 100);
+}
+
+function tableColumnGroup(description) {
+  return descriptionColumnWidths(description)
+    .map((width) => `<col style="width:${width.toFixed(2)}%">`)
+    .join("");
+}
+
+function renderDescriptionColumnWidths(description) {
+  elements["description-payment-columns"].innerHTML = tableColumnGroup(description);
+}
+
+function descriptionColumnLabel(column) {
+  const normalized = normalizedText(column);
+  if (normalized === "numero processo") return "Processo";
+  if (normalized === "numero lote") return "Lote";
+  if (normalized === "valor producao") return "Valor<br>Produção";
+  if (normalized === "valor pagamento") return "Valor<br>Pagamento";
+  if (normalized.includes("previsao pagamento")) return "Previsão<br>Pagamento";
+  if (normalized.includes("pcc")) return '<span title="PIS/COFINS/CSLL">PCC</span>';
+  return escapeHtml(column);
 }
 
 function renderPaymentDescription(report) {
@@ -191,8 +241,13 @@ function renderPaymentDescription(report) {
   elements["report-processed-period"].textContent = report.processedPeriod || (report.periodMonthName && report.periodYear ? `${report.periodMonthName.toLocaleUpperCase("pt-BR")}/${report.periodYear}` : "Não informado");
 
   const description = report.paymentDescription || { columns: [], rows: [], total: [] };
+  const descriptionTable = document.querySelector(".description-payment-table");
+  const tableScroll = descriptionTable.closest(".table-scroll");
+  descriptionTable.classList.remove("fit-screen", "extra-wide");
+  tableScroll.classList.remove("fit-screen-scroll");
+  renderDescriptionColumnWidths(description);
   elements["description-payment-head"].innerHTML = description.columns.length
-    ? `<tr>${description.columns.map((column) => `<th class="${descriptionCellClass(column)}">${escapeHtml(column)}</th>`).join("")}</tr>`
+    ? `<tr>${description.columns.map((column) => `<th class="${descriptionCellClass(column)}">${descriptionColumnLabel(column)}</th>`).join("")}</tr>`
     : "";
   elements["description-payment-body"].innerHTML = description.rows.length
     ? description.rows.map((row) => `<tr>${description.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(row[index] || "—")}</td>`).join("")}</tr>`).join("")
@@ -200,6 +255,10 @@ function renderPaymentDescription(report) {
   elements["description-payment-foot"].innerHTML = description.total?.length
     ? `<tr>${description.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(description.total[index] || "")}</td>`).join("")}</tr>`
     : "";
+  const fitScreen = description.columns.length > 6 || descriptionTable.scrollWidth > tableScroll.clientWidth + 1;
+  descriptionTable.classList.toggle("fit-screen", fitScreen);
+  descriptionTable.classList.toggle("extra-wide", fitScreen && description.columns.length > 10);
+  tableScroll.classList.toggle("fit-screen-scroll", fitScreen);
 }
 
 function renderGuideInformation(report) {
@@ -212,7 +271,8 @@ function renderGuideInformation(report) {
           <span class="guide-count">${group.rows.length.toLocaleString("pt-BR")} guia(s)</span>
         </header>
         <div class="table-scroll">
-          <table class="guide-table">
+          <table class="guide-table${group.columns.length > 10 ? " extra-wide" : ""}">
+            <colgroup>${tableColumnGroup(group)}</colgroup>
             <thead><tr>${group.columns.map((column) => `<th class="${descriptionCellClass(column)}">${escapeHtml(column)}</th>`).join("")}</tr></thead>
             <tbody>${group.rows.map((row) => `<tr>${group.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(row[index] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
             ${group.total?.length ? `<tfoot><tr>${group.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(group.total[index] || "")}</td>`).join("")}</tr></tfoot>` : ""}
@@ -402,7 +462,7 @@ function renderTussTables() {
         </span>
       </header>
       <div class="table-scroll">
-        <table class="tuss-edit-table">
+        <table class="tuss-edit-table${table.columns.length > 8 ? " extra-wide" : ""}">
           <thead><tr>${table.columns.map((column) => `<th>${escapeHtml(column.label)}</th>`).join("")}<th class="tuss-row-action-heading"><span class="visually-hidden">Ações</span></th></tr></thead>
           <tbody>
             ${table.rows.length ? table.rows.map((row, rowIndex) => `
@@ -653,11 +713,11 @@ async function savePlanCredentials(planId) {
 
 const readonlyReportLabels = {
   medical: {
-    title: "Conta médica",
+    title: "Conta Médica",
     empty: "Nenhum relatório de conta médica foi encontrado.",
   },
   import: {
-    title: "Importação",
+    title: "Importação na plataforma ASA",
     empty: "Nenhum relatório de importação foi encontrado.",
   },
 };
@@ -710,7 +770,8 @@ function renderMedicalTable(document) {
   elements["medical-row-count"].textContent = `${table.rows.length.toLocaleString("pt-BR")} linha(s)`;
   elements["medical-table"].innerHTML = table.columns.length
     ? `<div class="table-scroll">
-        <table class="guide-table medical-guide-table${table.columns.length > 8 ? " is-wide" : ""}">
+        <table class="guide-table medical-guide-table${table.columns.length > 10 ? " extra-wide" : ""}">
+          <colgroup>${tableColumnGroup(table)}</colgroup>
           <thead><tr>${table.columns.map((column) => `<th class="${descriptionCellClass(column)}">${escapeHtml(column)}</th>`).join("")}</tr></thead>
           <tbody>${table.rows.map((row) => `<tr>${table.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(row[index] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
           ${table.total?.length ? `<tfoot><tr>${table.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(table.total[index] || "")}</td>`).join("")}</tr></tfoot>` : ""}
@@ -798,7 +859,8 @@ function importTableMarkup(title, table, emptyMessage) {
     </header>
     ${safeTable.columns.length
       ? `<div class="table-scroll">
-          <table class="guide-table import-result-table${safeTable.columns.length > 7 ? " is-wide" : ""}">
+          <table class="guide-table import-result-table${safeTable.columns.length > 10 ? " extra-wide" : ""}">
+            <colgroup>${tableColumnGroup(safeTable)}</colgroup>
             <thead><tr>${safeTable.columns.map((column) => `<th class="${descriptionCellClass(column)}">${importColumnLabel(column)}</th>`).join("")}</tr></thead>
             <tbody>${safeTable.rows.map((row) => `<tr>${safeTable.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(row[index] || "—")}</td>`).join("")}</tr>`).join("")}</tbody>
             ${safeTable.total?.length ? `<tfoot><tr>${safeTable.columns.map((column, index) => `<td class="${descriptionCellClass(column)}">${escapeHtml(safeTable.total[index] || "")}</td>`).join("")}</tr></tfoot>` : ""}
@@ -819,8 +881,16 @@ function setImportView(view) {
 
 function renderImportReport(document) {
   const parsedTables = parseImportTablesFromText(document.rawText || "");
-  const parsedHasRows = parsedTables.notImported.rows.length || parsedTables.invalidPatients.rows.length;
-  const tables = parsedHasRows ? parsedTables : (document.importTables || parsedTables);
+  const sourceTables = document.importTables || {};
+  const tableWithFallback = (parsedTable, sourceTable) => (
+    parsedTable?.columns?.length || parsedTable?.rows?.length
+      ? parsedTable
+      : (sourceTable || parsedTable || { columns: [], rows: [], total: [] })
+  );
+  const tables = {
+    notImported: tableWithFallback(parsedTables.notImported, sourceTables.notImported),
+    invalidPatients: tableWithFallback(parsedTables.invalidPatients, sourceTables.invalidPatients),
+  };
   elements["import-not-imported-table"].innerHTML = importTableMarkup(
     "LINHAS NÃO IMPORTADAS",
     tables.notImported,
@@ -988,7 +1058,7 @@ function setActiveTab(tab) {
     updatePlanHeading();
   } else if (tab === "guides") {
     elements.agreement.textContent = activeReport()?.agreement || "Guias";
-    elements["report-subtitle"].textContent = "Guias";
+    elements["report-subtitle"].textContent = "Valor total recebido por Guia";
     elements["report-subtitle"].classList.remove("hidden");
   } else if (tab === "medical" || tab === "import") {
     const selection = state.readonlySelection[tab];

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Painel local para consulta de demonstrativos de pagamento." />
     <title>Demonstrativos de pagamento</title>
-    <link rel="stylesheet" href="/styles.css?v=20261013d" />
+    <link rel="stylesheet" href="/styles.css?v=20261013q" />
   </head>
   <body>
     <div class="app-shell">
@@ -54,7 +54,7 @@
             <span class="sidebar-config-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24"><path d="M6 3h12v18H6zM9 7h6M9 11h6M9 15h4" /></svg>
             </span>
-            <span>Conta médica</span>
+            <span>Conta Médica</span>
           </button>
           <button class="sidebar-nav-tab" id="plans-tab" type="button" data-sidebar-tab="plans">
             <span class="sidebar-config-icon" aria-hidden="true">
@@ -238,6 +238,7 @@
               <article class="panel table-panel description-payment-panel">
                 <div class="table-scroll">
                   <table class="description-payment-table">
+                    <colgroup id="description-payment-columns"></colgroup>
                     <thead id="description-payment-head"></thead>
                     <tbody id="description-payment-body"></tbody>
                     <tfoot id="description-payment-foot"></tfoot>
@@ -264,8 +265,7 @@
           <section class="primary-panel readonly-report-panel hidden" id="medical-panel">
             <div class="readonly-heading-row">
               <div>
-                <h2>Relatórios de conta médica</h2>
-                <p>Conteúdo somente para visualização.</p>
+                <h2>Conta Médica</h2>
               </div>
               <div class="readonly-filters">
                 <label class="readonly-filter"><span>Convênio</span><select id="medical-plan-select"></select></label>
@@ -317,8 +317,6 @@
               </section>
             </article>
           </section>
-        </section>
-
         <section class="primary-panel hidden plans-panel" id="plans-panel" aria-label="Configurações dos convênios">
           <div class="plan-context-bar">
             <label class="plan-context-filter">
@@ -401,6 +399,7 @@
             <div class="credentials-list hidden" id="plan-credentials-list"></div>
           </section>
         </section>
+        </section>
       </div>
       </main>
     </div>
@@ -420,6 +419,6 @@
     </div>
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-    <script src="/app.js?v=20261013c" defer></script>
+    <script src="/app.js?v=20261013q" defer></script>
   </body>
 </html>
