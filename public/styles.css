@@ -709,3 +709,10 @@ body.dialog-open { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
+
+th[data-sortable-column] { cursor: pointer; user-select: none; transition: color .16s ease, background-color .16s ease; }
+th[data-sortable-column]::after { content: "↕"; margin-left: 6px; color: #8ca0ad; font-size: .78em; opacity: .72; }
+th[data-sortable-column]:hover { color: #0b756d; background-color: #e8f2f2; }
+th[data-sortable-column]:focus-visible { outline: 2px solid #159488; outline-offset: -3px; }
+th[data-sortable-column][aria-sort="ascending"]::after { content: "↑"; color: #087d74; opacity: 1; }
+th[data-sortable-column][aria-sort="descending"]::after { content: "↓"; color: #087d74; opacity: 1; }

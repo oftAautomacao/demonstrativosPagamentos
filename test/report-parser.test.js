@@ -138,6 +138,56 @@ QTD DEMONSTRATIVOS`;
   assert.equal(report.paymentsByDate[1].paymentCents, 17011809);
 });
 
+test("ignora bordas ASCII na tabela de DESCRICAO PAGAMENTO", () => {
+  const text = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - SULAMERICA
+Mes/ano processado: OUTUBRO/2026
+DESCRICAO PAGAMENTO
++------------------+----------------------+----------------------+------------------------+
+| Data Pagamento   | Valor Apresentado    | Valor Liberado       | Download               |
++------------------+----------------------+----------------------+------------------------+
+| 10/10/2026       | R$ 4.600,00          | R$ 4.500,00          | OK (.xml + .pdf)       |
+| 17/10/2026       | R$ 1.200,00          | R$ 1.100,00          | OK (.xml + .pdf)       |
++------------------+----------------------+----------------------+------------------------+
+| TOTAL            | R$ 5.800,00          | R$ 5.600,00          |                        |
++------------------+----------------------+----------------------+------------------------+
+QTD DEMONSTRATIVOS`;
+  const report = parseReport(text, "C:\\Claude\\Sulamerica\\OUTUBRO_2026\\relatorio_Sulamerica.txt", "C:\\Claude");
+
+  assert.deepEqual(report.paymentDescription.columns, ["Data Pagamento", "Valor Apresentado", "Valor Liberado", "Download"]);
+  assert.equal(report.paymentDescription.rows.length, 2);
+  assert.equal(report.paymentDescription.rows[0][2], "R$ 4.500,00");
+  assert.equal(report.paymentDescription.total[2], "R$ 5.600,00");
+  assert.equal(report.paymentsByDate[1].paymentCents, 110000);
+});
+
+test("aceita separadores Markdown e caixas Unicode nas tabelas", () => {
+  const markdown = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - PLANO MARKDOWN
+DESCRICAO PAGAMENTO
+| Data Pagamento | Valor Apresentado | Valor Liberado | Download |
+|:----------------|------------------:|---------------:|----------|
+| 10/10/2026 | R$ 500,00 | R$ 480,00 | OK |
+QTD DEMONSTRATIVOS`;
+  const unicode = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - PLANO UNICODE
+DESCRICAO PAGAMENTO
+┌────────────────┬───────────────────┬────────────────┐
+│ Data Pagamento │ Valor Apresentado │ Valor Liberado │
+├────────────────┼───────────────────┼────────────────┤
+│ 20/10/2026     │ R$ 900,00         │ R$ 875,00      │
+└────────────────┴───────────────────┴────────────────┘
+QTD DEMONSTRATIVOS`;
+
+  const markdownReport = parseReport(markdown, "C:\\Claude\\Markdown\\OUTUBRO_2026\\relatorio_Markdown.txt", "C:\\Claude");
+  const unicodeReport = parseReport(unicode, "C:\\Claude\\Unicode\\OUTUBRO_2026\\relatorio_Unicode.txt", "C:\\Claude");
+
+  assert.deepEqual(markdownReport.paymentDescription.columns, ["Data Pagamento", "Valor Apresentado", "Valor Liberado", "Download"]);
+  assert.equal(markdownReport.paymentDescription.rows[0][2], "R$ 480,00");
+  assert.deepEqual(unicodeReport.paymentDescription.columns, ["Data Pagamento", "Valor Apresentado", "Valor Liberado"]);
+  assert.equal(unicodeReport.paymentDescription.rows[0][2], "R$ 875,00");
+});
+
 test("interpreta INFORMACOES GUIAS por data em formatos fixo e separado por barras", () => {
   const fixed = `
 RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - INTERMEDICA

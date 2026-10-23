@@ -70,17 +70,28 @@ function sliceFixedWidthRow(line, starts) {
   return starts.map((start, index) => clean(line.slice(start, starts[index + 1] ?? line.length)));
 }
 
+function hasTableDelimiter(line = "") {
+  return /[|\u2502\u2551]/.test(line);
+}
+
+function splitDelimitedRow(line = "") {
+  const values = String(line).split(/[|\u2502\u2551]/).map(clean);
+  if (!values[0]) values.shift();
+  if (!values.at(-1)) values.pop();
+  return values;
+}
+
 function parsePaymentDescription(lines) {
   const section = findSection(lines, "DESCRICAO PAGAMENTO", ["QTD DEMONSTRATIVOS"])
     .filter((line) => clean(line) && !isDivider(line));
   if (section.length < 2) return { columns: [], rows: [], total: [] };
 
   const header = section[0];
-  const pipeDelimited = header.includes("|");
+  const pipeDelimited = hasTableDelimiter(header);
   let columns;
   let starts = [];
   if (pipeDelimited) {
-    columns = header.split("|").map(clean).filter(Boolean);
+    columns = splitDelimitedRow(header);
   } else {
     const definitions = fixedWidthColumns(header);
     columns = definitions.map((column) => column.label);
@@ -91,7 +102,7 @@ function parsePaymentDescription(lines) {
   let total = [];
   for (const line of section.slice(1)) {
     const values = pipeDelimited
-      ? line.split("|").map(clean).filter((_, index, all) => !(index === 0 && !all[index]) && !(index === all.length - 1 && !all[index]))
+      ? splitDelimitedRow(line)
       : sliceFixedWidthRow(line, starts);
     while (values.length < columns.length) values.push("");
     const normalizedFirst = normalizeKey(values[0] || "");
@@ -152,9 +163,9 @@ function parseGuideInformation(lines) {
     if (!current || !clean(line) || isDivider(line)) continue;
 
     if (current.columns.length === 0) {
-      current.pipeDelimited = line.includes("|");
+      current.pipeDelimited = hasTableDelimiter(line);
       if (current.pipeDelimited) {
-        current.columns = line.split("|").map(clean).filter(Boolean);
+        current.columns = splitDelimitedRow(line);
       } else {
         const definitions = fixedWidthColumns(line);
         current.columns = definitions.map((column) => column.label);
@@ -164,7 +175,7 @@ function parseGuideInformation(lines) {
     }
 
     const values = current.pipeDelimited
-      ? line.split("|").map(clean).filter((value, index, all) => !((index === 0 || index === all.length - 1) && !value))
+      ? splitDelimitedRow(line)
       : sliceFixedWidthRow(line, current.starts);
     while (values.length < current.columns.length) values.push("");
     if (normalizeKey(values[0] || "").startsWith("total")) current.total = values.slice(0, current.columns.length);
@@ -309,7 +320,9 @@ function extractPeriodParts(...values) {
 }
 
 function isDivider(line) {
-  return /^\s*[=\-_]{8,}\s*$/.test(line);
+  const compact = String(line).replace(/\s/g, "");
+  if (compact.length < 8 || !/[-=_\u2500\u2501\u2550]{3,}/.test(compact)) return false;
+  return /^[+\-|=_:\u2500-\u254b\u2550-\u256c]+$/.test(compact);
 }
 
 function isSectionHeading(line) {
