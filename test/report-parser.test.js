@@ -205,6 +205,7 @@ OBSERVACOES`;
   assert.deepEqual(fixedReport.guideInformation[0].columns, ["Guia", "Valor Informado", "Valor Liberado"]);
   assert.equal(fixedReport.guideInformation[0].rows.length, 2);
   assert.equal(fixedReport.guideInformation[0].total[0], "TOTAL (2 guias)");
+  assert.equal(fixedReport.guideInformation[0].guideCount, 2);
 
   const pipes = `
 RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - SULAMERICA
@@ -225,4 +226,26 @@ FIM DO RELATORIO`;
   assert.equal(pipeReport.guideInformation[1].paymentDate, "17/09/2026");
   assert.equal(pipeReport.guideInformation[0].rows[0][1], "PACIENTE TESTE");
   assert.equal(pipeReport.guideInformation[1].total[3], "R$ 450,00");
+  assert.equal(pipeReport.guideInformation[0].guideCount, 1);
+});
+
+test("distingue a quantidade de guias da quantidade de linhas", () => {
+  const text = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - INTERMEDICA
+INFORMACOES GUIAS
+Data de pagamento 20/09/2026
+Guia            Valor Informado   Valor Liberado
+1001                     100,00           100,00
+1001                     200,00           200,00
+1002                     150,00           150,00
+TOTAL (2 guias)          450,00           450,00
+Conferencia contra o Valor Pagamento de 20/09/2026 no portal
+(R$ 450,00): CONFERE.
+FIM DO RELATORIO`;
+
+  const report = parseReport(text, "C:\\Claude\\Intermedica\\SETEMBRO_2026\\relatorio_Intermedica.txt", "C:\\Claude");
+
+  assert.equal(report.guideInformation[0].rows.length, 3);
+  assert.equal(report.guideInformation[0].guideCount, 2);
+  assert.deepEqual(report.guideInformation[0].total, ["TOTAL (2 guias)", "450,00", "450,00"]);
 });

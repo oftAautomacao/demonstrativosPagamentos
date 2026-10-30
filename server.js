@@ -10,6 +10,8 @@ const { readImportConfig, writeImportConfig } = require("./control-import");
 const { readControlPayments } = require("./control-payments");
 const { readPlanCredentials, writePlanCredentials } = require("./plan-credentials");
 const { readReadonlyReports } = require("./readonly-reports");
+const { analyzeUploadedStatement, buildPlanCandidates } = require("./statement-analyzer");
+const { checkTreasuryFirebase, loadTreasuryPayments, saveTreasuryPayments } = require("./treasury-firebase");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -115,6 +117,69 @@ const server = http.createServer(async (request, response) => {
         error: "Não foi possível ler os relatórios.",
         detail: error.message,
         rootPath: REPORTS_ROOT,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "POST" && requestUrl.pathname === "/api/payment-statement/analyze") {
+    try {
+      const body = await readJsonBody(request, 17 * 1024 * 1024);
+      const reportData = loadReports(REPORTS_ROOT);
+      let configuredNames = [];
+      try {
+        configuredNames = readImportConfig(CONTROL_REPORT_PATH).rows.map((row) => row.agreement);
+      } catch {
+        // Os relatórios continuam sendo uma fonte suficiente quando o controle não existe.
+      }
+      const candidates = buildPlanCandidates(reportData.reports, configuredNames);
+      if (!candidates.length) {
+        throw new Error("Nenhum convênio cadastrado foi encontrado para realizar a comparação.");
+      }
+      const analysis = await analyzeUploadedStatement({
+        fileName: body.fileName,
+        base64: body.base64,
+        candidates,
+      });
+      try {
+        analysis.persistence = await saveTreasuryPayments(analysis.matches, { sourceBank: analysis.sourceBank });
+      } catch (persistenceError) {
+        analysis.persistence = {
+          saved: false,
+          count: 0,
+          error: persistenceError.message,
+        };
+      }
+      sendJson(response, 200, analysis);
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível analisar o extrato de pagamento.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/treasury/payments") {
+    try {
+      sendJson(response, 200, await loadTreasuryPayments());
+    } catch (error) {
+      sendJson(response, 503, {
+        error: "Não foi possível carregar os pagamentos salvos na Tesouraria.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (request.method === "GET" && requestUrl.pathname === "/api/treasury/firebase-status") {
+    try {
+      sendJson(response, 200, await checkTreasuryFirebase());
+    } catch (error) {
+      sendJson(response, 503, {
+        connected: false,
+        environment: "teste",
+        error: error.message,
       });
     }
     return;
@@ -296,6 +361,9 @@ server.listen(PORT, HOST, () => {
     console.log("Abrindo o painel no navegador...");
     openBrowser(url);
   }
+  checkTreasuryFirebase()
+    .then((status) => console.log(`Firebase ${status.environment}: conectado em ${status.path}`))
+    .catch((error) => console.error(`Firebase teste: não foi possível validar a gravação: ${error.message}`));
 });
 
 server.on("error", (error) => {

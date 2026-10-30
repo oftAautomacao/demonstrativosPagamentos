@@ -1,6 +1,8 @@
 window.__painelCarregado = true;
 
 const sidebarTabByHash = {
+  "#tesouraria": "treasury",
+  "#inicio": "treasury",
   "#configuracao": "config",
   "#pagamentos": "payments",
   "#convenios": "plans",
@@ -14,7 +16,7 @@ const sidebarTabByHash = {
 const state = {
   data: null,
   activeId: null,
-  activeTab: sidebarTabByHash[window.location.hash] || "config",
+  activeTab: sidebarTabByHash[window.location.hash] || "treasury",
   planView: window.location.hash === "#login-senha" ? "credentials" : "tuss",
   selectedPlanName: "",
   reportInnerView: "summary",
@@ -44,6 +46,7 @@ const state = {
   importConfigSaveTimer: null,
   controlPayments: [],
   controlPaymentsLoaded: false,
+  treasuryLoading: false,
   readonlyDocuments: { medical: [], import: [] },
   readonlyLoaded: { medical: false, import: false },
   readonlySelection: {
@@ -65,6 +68,9 @@ const ids = [
   "tuss-table-loading", "tuss-table-message", "tuss-table-list",
   "desired-date-panel", "desired-date-select", "config-tab", "plans-tab", "plan-inner-tabs", "plan-settings-select", "report-internal-menu", "report-inner-tabs",
   "header-period-filter", "header-plan-filter", "report-subtitle", "demonstrative-summary", "embedded-full-report",
+  "statement-home", "statement-drop-zone", "statement-file-input", "statement-progress", "statement-progress-file",
+  "statement-message", "statement-results", "statement-result-title", "statement-result-count", "statement-result-file",
+  "statement-save-status", "statement-plan-list", "statement-new-analysis",
   "guide-groups", "guides-tab", "medical-tab", "import-tab",
   "config-panel", "config-add", "config-loading", "config-message", "config-content",
   "config-rows",
@@ -261,6 +267,21 @@ function renderPaymentDescription(report) {
   tableScroll.classList.toggle("fit-screen-scroll", fitScreen);
 }
 
+function guideCount(group) {
+  const distinctGuideNumbers = new Set(
+    (group.rows || [])
+      .map((row) => String(row?.[0] || "").trim())
+      .filter((value) => /^\d+$/.test(value)),
+  );
+  if (distinctGuideNumbers.size) return distinctGuideNumbers.size;
+
+  const declaredCount = (group.total || [])
+    .join(" ")
+    .match(/(\d[\d.]*)\s+guia(?:s|\(s\))?/i);
+  if (declaredCount) return Number.parseInt(declaredCount[1].replace(/\./g, ""), 10);
+  return Number(group.guideCount || 0);
+}
+
 function renderGuideInformation(report) {
   const groups = report.guideInformation || [];
   elements["guide-groups"].innerHTML = groups.length
@@ -268,7 +289,7 @@ function renderGuideInformation(report) {
       <article class="guide-group">
         <header class="guide-group-heading">
           <span><small>Data de pagamento</small><strong>${escapeHtml(group.paymentDate || "Não informada")}</strong></span>
-          <span class="guide-count">${group.rows.length.toLocaleString("pt-BR")} guia(s)</span>
+          <span class="guide-count">${guideCount(group).toLocaleString("pt-BR")} guia(s)</span>
         </header>
         <div class="table-scroll">
           <table class="guide-table${group.columns.length > 10 ? " extra-wide" : ""}">
@@ -1035,7 +1056,7 @@ function setReportInnerView(view) {
 function setActiveTab(tab) {
   state.activeTab = tab;
   const titleGroup = document.querySelector(".report-title-group");
-  titleGroup.classList.toggle("compact-title", ["config", "plans", "payments", "medical", "import"].includes(tab));
+  titleGroup.classList.toggle("compact-title", ["treasury", "config", "plans", "payments", "medical", "import"].includes(tab));
   titleGroup.classList.toggle("plan-heading", tab === "plans");
   elements.agreement.classList.toggle("plan-page-title", tab === "plans");
   document.querySelectorAll(".sidebar-nav-tab").forEach((button) => {
@@ -1045,7 +1066,11 @@ function setActiveTab(tab) {
   document.getElementById(`${tab}-panel`).classList.remove("hidden");
   elements["plan-inner-tabs"].classList.toggle("hidden", tab !== "plans");
   updateReportSelectionVisibility();
-  if (tab === "config") {
+  if (tab === "treasury") {
+    elements.agreement.textContent = "Tesouraria";
+    elements["report-subtitle"].textContent = "Pagamentos identificados no extrato";
+    elements["report-subtitle"].classList.remove("hidden");
+  } else if (tab === "config") {
     elements.agreement.textContent = "Configuração de importação";
     elements["report-subtitle"].textContent = "";
     elements["report-subtitle"].classList.add("hidden");
@@ -1072,6 +1097,7 @@ function setActiveTab(tab) {
   }
   if (tab !== "plans") {
     const hashes = {
+      treasury: "#tesouraria",
       config: "#configuracao",
       payments: "#pagamentos",
       guides: "#guias",
@@ -1082,6 +1108,7 @@ function setActiveTab(tab) {
     history.replaceState(null, "", hash);
   }
   if (tab === "overview") setReportInnerView("summary");
+  if (tab === "treasury") loadTreasuryPayments();
   if (tab === "config") loadImportConfig();
   if (tab === "payments") loadControlPayments();
   if (tab === "plans") setPlanView(state.planView);
@@ -1130,6 +1157,171 @@ async function readApiResponse(response) {
   }
   if (!response.ok) throw new Error(data.detail || data.error || "Erro desconhecido");
   return data;
+}
+
+function showStatementMessage(message = "") {
+  elements["statement-message"].textContent = message;
+  elements["statement-message"].classList.toggle("hidden", !message);
+}
+
+function fileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result).split(",", 2)[1] || ""));
+    reader.addEventListener("error", () => reject(new Error("Não foi possível abrir o arquivo selecionado.")));
+    reader.readAsDataURL(file);
+  });
+}
+
+const treasuryBankSymbols = {
+  Bradesco: {
+    src: "https://assets.bradesco/content/dam/banco-bradesco/marca/static-files/icons/ARVORE.svg",
+    className: "is-bradesco",
+  },
+  "Banco do Brasil": {
+    src: "https://www.bb.com.br/site/wp-content/themes/portal40/img/icn-am.ico",
+    className: "is-banco-brasil",
+  },
+};
+
+function treasuryBankSymbol(sourceBank = "") {
+  const bank = String(sourceBank || "Banco não identificado");
+  const symbol = treasuryBankSymbols[bank];
+  if (!symbol) {
+    return `<span class="treasury-bank-symbol is-unknown" title="${escapeHtml(bank)}" aria-label="${escapeHtml(bank)}">¤</span>`;
+  }
+  return `<span class="treasury-bank-symbol ${symbol.className}" title="${escapeHtml(bank)}" aria-label="${escapeHtml(bank)}">
+    <img src="${symbol.src}" alt="" loading="lazy" />
+  </span>`;
+}
+
+function renderStatementResult(data) {
+  const matches = data.matches || [];
+  const rows = matches.flatMap((match) => (match.occurrences || []).map((occurrence) => ({
+    planName: match.planName,
+    ...occurrence,
+    sourceBank: occurrence.sourceBank || data.sourceBank || "Banco não identificado",
+  }))).sort((a, b) => {
+    const dateKey = (value = "") => value.split("/").reverse().join("");
+    return dateKey(a.paymentDate).localeCompare(dateKey(b.paymentDate))
+      || a.planName.localeCompare(b.planName, "pt-BR");
+  });
+  const total = rows.length;
+  elements["statement-result-count"].textContent = total.toLocaleString("pt-BR");
+  elements["statement-result-title"].textContent = total
+    ? `${total} pagamento${total === 1 ? " identificado" : "s identificados"}`
+    : "Nenhum pagamento identificado";
+  elements["statement-result-file"].textContent = data.loadedFromFirebase
+    ? `${total.toLocaleString("pt-BR")} lançamento(s) armazenado(s) · extratos complementares são acumulados`
+    : `${data.fileName} · ${Number(data.analyzedLines || 0).toLocaleString("pt-BR")} linha(s) analisada(s) · ${data.sourceBank || "Banco não identificado"}`;
+  const persistence = data.persistence;
+  const hasPersistenceResult = persistence && typeof persistence.saved === "boolean";
+  elements["statement-save-status"].textContent = data.loadedFromFirebase
+    ? data.statusText || "Dados carregados do Firebase de teste"
+    : !hasPersistenceResult
+    ? "O servidor em execução está desatualizado. Feche-o, abra novamente pelo arquivo Iniciar Painel.bat e reenvie o PDF."
+    : persistence.saved
+      ? `${Number(persistence.count || 0).toLocaleString("pt-BR")} pagamento(s) salvo(s) no Firebase de teste`
+      : `Não foi possível salvar no Firebase de teste: ${persistence.error || "o servidor não retornou o motivo da falha"}`;
+  elements["statement-save-status"].classList.toggle("is-error", !hasPersistenceResult || !persistence.saved);
+  if (data.loadedFromFirebase) elements["statement-save-status"].classList.remove("is-error");
+  elements["statement-plan-list"].innerHTML = rows.length
+    ? `<div class="table-scroll treasury-table-scroll">
+        <table class="treasury-table">
+          <thead><tr><th>Plano</th><th>Data de pagamento</th><th>Valor pago</th></tr></thead>
+          <tbody>${rows.map((row) => `
+            <tr title="${escapeHtml(row.evidence || "")}">
+              <td><span class="treasury-plan">${treasuryBankSymbol(row.sourceBank)}<span class="statement-plan-check" aria-hidden="true">✓</span><strong>${escapeHtml(row.planName)}</strong></span></td>
+              <td>${escapeHtml(row.paymentDate || "—")}</td>
+              <td class="number">${escapeHtml(row.paymentAmount ? `R$ ${row.paymentAmount}` : "—")}</td>
+            </tr>
+          `).join("")}</tbody>
+        </table>
+      </div>`
+    : '<div class="statement-empty-result">Nenhum pagamento de convênio cadastrado foi localizado neste extrato.</div>';
+  elements["statement-results"].classList.remove("hidden");
+}
+
+function savedPaymentsAsMatches(payments = []) {
+  const matches = new Map();
+  for (const payment of payments) {
+    if (!matches.has(payment.planName)) matches.set(payment.planName, []);
+    const isoParts = String(payment.paymentDate || "").split("-");
+    const paymentDate = isoParts.length === 3 ? isoParts.reverse().join("/") : payment.paymentDate;
+    const paymentAmount = Number(payment.paymentAmount).toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+    matches.get(payment.planName).push({
+      paymentDate,
+      paymentAmount,
+      sourceBank: payment.sourceBank,
+      evidence: `Origem: ${payment.sourceBank || "Banco não identificado"}`,
+    });
+  }
+  return [...matches].map(([planName, occurrences]) => ({ planName, occurrences }));
+}
+
+async function loadTreasuryPayments({ statusText = "" } = {}) {
+  if (state.treasuryLoading) return;
+  state.treasuryLoading = true;
+  try {
+    const response = await fetch("/api/treasury/payments", { cache: "no-store" });
+    const data = await readApiResponse(response);
+    renderStatementResult({
+      matches: savedPaymentsAsMatches(data.payments),
+      loadedFromFirebase: true,
+      statusText,
+      persistence: { saved: true, count: data.count },
+    });
+  } catch (error) {
+    const oldServer = /arquivo não encontrado|404/i.test(error.message);
+    showStatementMessage(oldServer
+      ? "O painel aberto está usando uma versão antiga do servidor. Feche a janela do painel, abra novamente pelo arquivo Iniciar Painel.bat e atualize esta página."
+      : error.message);
+  } finally {
+    state.treasuryLoading = false;
+  }
+}
+
+async function analyzeStatementFile(file) {
+  if (!file) return;
+  showStatementMessage("");
+  elements["statement-results"].classList.add("hidden");
+  const extension = file.name.toLocaleLowerCase("pt-BR").match(/\.[^.]+$/)?.[0] || "";
+  if (![".pdf", ".csv", ".ofx", ".txt"].includes(extension)) {
+    showStatementMessage("Formato não aceito. Selecione um arquivo PDF, CSV, OFX ou TXT.");
+    return;
+  }
+  if (file.size > 12 * 1024 * 1024) {
+    showStatementMessage("O extrato excede o limite de 12 MB.");
+    return;
+  }
+
+  elements["statement-file-input"].disabled = true;
+  elements["statement-progress-file"].textContent = file.name;
+  elements["statement-progress"].classList.remove("hidden");
+  try {
+    const base64 = await fileAsBase64(file);
+    const response = await fetch("/api/payment-statement/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileName: file.name, base64 }),
+    });
+    const data = await readApiResponse(response);
+    renderStatementResult(data);
+    if (data.persistence?.saved) {
+      await loadTreasuryPayments({
+        statusText: `${Number(data.persistence.count || 0).toLocaleString("pt-BR")} pagamento(s) do ${data.sourceBank || "banco identificado"} atualizado(s) no Firebase de teste`,
+      });
+    }
+  } catch (error) {
+    showStatementMessage(error.message);
+  } finally {
+    elements["statement-progress"].classList.add("hidden");
+    elements["statement-file-input"].disabled = false;
+    elements["statement-file-input"].value = "";
+  }
 }
 
 function renderImportConfig() {
@@ -1557,6 +1749,27 @@ elements["tuss-apply"].addEventListener("click", async () => {
     elements["tuss-result"].innerHTML = `<strong>Falha ao gerar os arquivos</strong><span>${escapeHtml(error.message)}</span>`;
     elements["tuss-result"].classList.remove("hidden");
   }
+});
+elements["statement-file-input"].addEventListener("change", (event) => {
+  analyzeStatementFile(event.target.files?.[0]);
+});
+for (const eventName of ["dragenter", "dragover"]) {
+  elements["statement-drop-zone"].addEventListener(eventName, (event) => {
+    event.preventDefault();
+    elements["statement-drop-zone"].classList.add("is-dragging");
+  });
+}
+for (const eventName of ["dragleave", "drop"]) {
+  elements["statement-drop-zone"].addEventListener(eventName, (event) => {
+    event.preventDefault();
+    elements["statement-drop-zone"].classList.remove("is-dragging");
+  });
+}
+elements["statement-drop-zone"].addEventListener("drop", (event) => {
+  analyzeStatementFile(event.dataTransfer?.files?.[0]);
+});
+elements["statement-new-analysis"].addEventListener("click", () => {
+  elements["statement-file-input"].click();
 });
 window.addEventListener("focus", autoRefreshPlanSettings);
 document.addEventListener("visibilitychange", autoRefreshPlanSettings);

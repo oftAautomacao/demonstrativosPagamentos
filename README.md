@@ -19,6 +19,10 @@ python -m pip install -r requirements.txt
 
 ## O que o painel exibe
 
+- Aba **Tesouraria** para carregar extratos PDF, CSV, OFX ou TXT e listar plano, data de pagamento e valor pago de cada crédito identificado;
+- Evidências encontradas no extrato para conferência de cada convênio identificado, sem armazenar o arquivo enviado;
+- Salvamento automático dos pagamentos no Firebase Realtime Database em `/OFT/Faturamento/Tesouraria/{plano}/{aaaa-mm-dd}/{banco}/valorExtrato`; Bradesco e Banco do Brasil ficam como fontes complementares, enquanto o reenvio do extrato do mesmo banco substitui seus valores; quando há mais de um pagamento do mesmo plano, banco e data, são usados `valorExtrato2`, `valorExtrato3` e assim por diante;
+- Carregamento automático, ao abrir a Tesouraria, de todos os pagamentos já armazenados no Firebase de teste;
 - Navegação de competência no cabeçalho, com mês e ano juntos e setas que percorrem somente os períodos encontrados nos relatórios;
 - Lista automática dos planos disponíveis na competência escolhida;
 - Lista suspensa de planos e configuração lateral da `Data Desejada`, organizadas em um único painel, com leitura e salvamento automático do mês/ano diretamente no campo `DATA DESEJADA:` do `Relatorio Controle.txt`, sem alterar o restante do arquivo;

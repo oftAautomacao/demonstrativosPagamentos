@@ -70,6 +70,18 @@ function sliceFixedWidthRow(line, starts) {
   return starts.map((start, index) => clean(line.slice(start, starts[index + 1] ?? line.length)));
 }
 
+function sliceGuideTotalRow(line, columnCount, starts) {
+  const amounts = [...line.matchAll(/(?:R\$\s*)?-?\d[\d.]*,\d{2}/g)];
+  if (amounts.length === 0) return sliceFixedWidthRow(line, starts);
+
+  const values = [
+    clean(line.slice(0, amounts[0].index)),
+    ...amounts.map((match) => clean(match[0])),
+  ];
+  while (values.length < columnCount) values.push("");
+  return values.slice(0, columnCount);
+}
+
 function hasTableDelimiter(line = "") {
   return /[|\u2502\u2551]/.test(line);
 }
@@ -174,16 +186,35 @@ function parseGuideInformation(lines) {
       continue;
     }
 
+    if (current.total.length) continue;
+
+    const isTotal = normalizeKey(clean(line)).startsWith("total");
     const values = current.pipeDelimited
       ? splitDelimitedRow(line)
-      : sliceFixedWidthRow(line, current.starts);
+      : isTotal
+        ? sliceGuideTotalRow(line, current.columns.length, current.starts)
+        : sliceFixedWidthRow(line, current.starts);
     while (values.length < current.columns.length) values.push("");
-    if (normalizeKey(values[0] || "").startsWith("total")) current.total = values.slice(0, current.columns.length);
+    if (isTotal) current.total = values.slice(0, current.columns.length);
     else if (values.some(Boolean)) current.rows.push(values.slice(0, current.columns.length));
   }
   commit();
 
-  return groups.map(({ pipeDelimited, starts, ...group }) => group);
+  return groups.map(({ pipeDelimited, starts, ...group }) => {
+    const distinctGuideNumbers = new Set(
+      group.rows
+        .map((row) => clean(row[0] || ""))
+        .filter((value) => /^\d+$/.test(value)),
+    );
+    const declaredCount = group.total
+      .map((value) => normalizeKey(value))
+      .join(" ")
+      .match(/(\d[\d.]*)\s+guia(?:s|\(s\))?/i);
+    const guideCount = distinctGuideNumbers.size
+      || (declaredCount ? Number.parseInt(declaredCount[1].replace(/\./g, ""), 10) : 0);
+
+    return { ...group, guideCount };
+  });
 }
 
 function parseItems(lines) {
