@@ -1,13 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  buildBankCleanupPatch,
   buildTreasuryPatch,
   checkTreasuryFirebase,
   FIREBASE_DATABASE_URL,
   FIREBASE_ENVIRONMENT,
+  isEditableAssistancePlan,
   loadTreasuryPayments,
   parseTreasuryData,
   saveTreasuryPayments,
+  treasuryPlanNameKey,
+  updateTreasuryPaymentPlan,
 } = require("../treasury-firebase");
 
 const matches = [{
@@ -46,24 +50,54 @@ test("ignora somente registros sem data ou valor", () => {
 });
 
 test("salva com PATCH sem sobrescrever os demais pagamentos", async () => {
-  let request;
+  const requests = [];
   const result = await saveTreasuryPayments(matches, {
     sourceBank: "Banco do Brasil",
     databaseUrl: "https://exemplo.firebaseio.com/",
     fetchImpl: async (url, options) => {
-      request = { url, options };
+      requests.push({ url, options });
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            Sulamerica: { "2026-09-17": {
+              Bradesco: { valorExtrato: 900 },
+              "Banco do Brasil": { valorExtrato: 400, valorExtrato2: 100 },
+            } },
+            "Plano antigo": { "2026-09-03": { "Banco do Brasil": { valorExtrato: 50 } } },
+          }),
+        };
+      }
       return { ok: true, status: 204, text: async () => "" };
     },
   });
+  const request = requests.at(-1);
   assert.equal(result.count, 3);
+  assert.deepEqual(requests.map((item) => item.options.method), ["GET", "PATCH"]);
   assert.equal(request.options.method, "PATCH");
   assert.match(request.url, /OFT\/Faturamento\/Tesouraria\.json\?print=silent$/);
   const body = JSON.parse(request.options.body);
-  assert.equal(Object.keys(body).length, 2);
+  assert.equal(Object.keys(body).length, 3);
   assert.deepEqual(body["Sulamerica/2026-09-17/Banco do Brasil"], {
     valorExtrato: 500,
     valorExtrato2: 500,
   });
+  assert.equal(body["Plano antigo/2026-09-03/Banco do Brasil"], null);
+  assert.equal("Sulamerica/2026-09-17/Bradesco" in body, false);
+});
+
+test("limpa somente o mesmo banco e mês antes do reenvio", () => {
+  const cleanup = buildBankCleanupPatch({
+    Amil: {
+      "2026-10-01": {
+        Bradesco: { valorExtrato: 100 },
+        "Banco do Brasil": { valorExtrato: 200 },
+      },
+      "2026-09-01": { Bradesco: { valorExtrato: 300 } },
+    },
+  }, { sourceBank: "Bradesco", months: ["2026-10"] });
+  assert.deepEqual(cleanup, { "Amil/2026-10-01/Bradesco": null });
 });
 
 test("mantém Bradesco e Banco do Brasil como extratos complementares", () => {
@@ -116,10 +150,97 @@ test("carrega os pagamentos já salvos ao abrir a Tesouraria", async () => {
   assert.equal(result.count, 1);
   assert.deepEqual(result.payments[0], {
     planName: "Amil",
+    originalPlanName: "Amil",
     paymentDate: "2026-10-01",
     paymentAmount: 125.5,
+    paymentKey: "valorExtrato",
     sourceBank: "Bradesco",
   });
+});
+
+test("exibe o nome editado mantendo a origem CX Assistência", () => {
+  const payments = parseTreasuryData({
+    "CX Assistência": {
+      "2026-10-23": {
+        Bradesco: {
+          valorExtrato: 12506.45,
+          nomePlano: "Cassi",
+          valorExtrato2: 100,
+          nomePlano2: "Amil",
+        },
+      },
+    },
+  });
+  assert.deepEqual(payments.map((payment) => ({
+    planName: payment.planName,
+    originalPlanName: payment.originalPlanName,
+    paymentKey: payment.paymentKey,
+  })), [{
+    planName: "Amil",
+    originalPlanName: "CX Assistência",
+    paymentKey: "valorExtrato2",
+  }, {
+    planName: "Cassi",
+    originalPlanName: "CX Assistência",
+    paymentKey: "valorExtrato",
+  }]);
+});
+
+test("ordena a Tesouraria alfabeticamente pelo nome exibido do plano", () => {
+  const payments = parseTreasuryData({
+    Sulamerica: { "2026-10-01": { Bradesco: { valorExtrato: 100 } } },
+    Amil: { "2026-10-30": { Bradesco: { valorExtrato: 200 } } },
+    Cassi: { "2026-10-15": { Bradesco: { valorExtrato: 300 } } },
+  });
+  assert.deepEqual(payments.map((payment) => payment.planName), ["Amil", "Cassi", "Sulamerica"]);
+});
+
+test("edita somente o nome associado ao pagamento de CX Assistência", async () => {
+  const requests = [];
+  const result = await updateTreasuryPaymentPlan({
+    currentPlanName: "CX Assistência",
+    newPlanName: "Cassi",
+    paymentDate: "23/10/2026",
+    sourceBank: "Bradesco",
+    paymentKey: "valorExtrato",
+  }, {
+    databaseUrl: "https://exemplo.firebaseio.com/",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            "CX Assistência": {
+              "2026-10-23": { Bradesco: { valorExtrato: 12506.45 } },
+            },
+          }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => "" };
+    },
+  });
+  assert.deepEqual(requests.map((request) => request.options.method), ["GET", "PATCH"]);
+  assert.deepEqual(JSON.parse(requests[1].options.body), {
+    "CX Assistência/2026-10-23/Bradesco/nomePlano": "Cassi",
+  });
+  assert.equal(result.planName, "Cassi");
+  assert.equal(result.originalPlanName, "CX Assistência");
+});
+
+test("bloqueia edição para planos que não sejam caixas de assistência", async () => {
+  assert.equal(isEditableAssistancePlan("CX Assistência"), true);
+  assert.equal(isEditableAssistancePlan("Caixa Assistencial"), true);
+  assert.equal(isEditableAssistancePlan("Cassi"), false);
+  assert.equal(treasuryPlanNameKey("valorExtrato2"), "nomePlano2");
+  await assert.rejects(() => updateTreasuryPaymentPlan({
+    currentPlanName: "Cassi",
+    newPlanName: "Amil",
+    paymentDate: "23/10/2026",
+    sourceBank: "Bradesco",
+    paymentKey: "valorExtrato",
+  }, { fetchImpl: async () => ({ ok: true }) }), /Somente pagamentos de CX Assistência/);
 });
 
 test("mantém a Tesouraria configurada exclusivamente no Firebase de teste", () => {

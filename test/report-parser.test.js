@@ -1,6 +1,9 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { parseMoney, parseReport } = require("../report-parser");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { loadReports, parseMoney, parseReport } = require("../report-parser");
 
 test("converte valores monetários brasileiros em centavos", () => {
   assert.equal(parseMoney("R$ 193.243,21"), 19324321);
@@ -111,6 +114,65 @@ QTD DEMONSTRATIVOS`;
   assert.equal(report.paymentDescription.rows.length, 2);
   assert.equal(report.paymentDescription.total[0], "TOTAL");
   assert.equal(report.paymentsByDate[0].paymentCents, 418000);
+});
+
+test("corrige na aba Demonstrativo as colunas monetárias desalinhadas", () => {
+  const text = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - INTERMEDICA
+Mes/ano processado: OUTUBRO/2026
+DESCRICAO PAGAMENTO
+Numero Processo Numero Lote  Previsao Pag   Valor Producao  Valor Pagamento        PCC      IRRF     ISS    INSS  Download
+------------------------------------------------------------------------------------------------------------------------------------
+2660740859      203430       20/10/2026             360,00           360,00      16,74      0,00    0,00    0,00  OK (.xml + .xlsx)
+2660737968      1349         20/10/2026             500,00           500,00      23,25      0,00    0,00    0,00  OK (.xml + .xlsx)
+2660737746      1348         20/10/2026           7.200,00         7.200,00     334,80    108,00    0,00    0,00  OK (.xml + .xlsx)
+QTD DEMONSTRATIVOS`;
+  const report = parseReport(text, "C:\\Claude\\Intermedica\\OUTUBRO_2026\\relatorio_Intermedica.txt", "C:\\Claude");
+
+  assert.deepEqual(report.paymentDescription.columns, [
+    "Numero Processo", "Numero Lote", "Previsao Pagamento", "Valor Producao", "Valor Pagamento",
+    "PCC", "IRRF", "ISS", "INSS", "Download",
+  ]);
+  assert.equal(report.paymentDescription.rows[0][4], "360,00");
+  assert.equal(report.paymentDescription.rows[0][5], "16,74");
+  assert.equal(report.paymentDescription.rows[1][5], "23,25");
+  assert.equal(report.paymentDescription.rows[2][5], "334,80");
+  assert.equal(report.paymentDescription.rows[0][9], "OK (.xml + .xlsx)");
+  assert.equal(report.paymentsByDate[0].paymentCents, 806000);
+});
+
+test("aceita tabelas separadas por ponto e vírgula ou tabulação", () => {
+  const semicolon = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - PLANO A
+DESCRICAO PAGAMENTO
+Data Pagamento;Valor Apresentado;Valor Liberado;Download
+10/10/2026;R$ 500,00;R$ 480,00;OK
+QTD DEMONSTRATIVOS`;
+  const tabs = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - PLANO B
+DESCRICAO PAGAMENTO
+Data Pagamento\tValor Apresentado\tValor Liberado\tDownload
+11/10/2026\tR$ 900,00\tR$ 875,00\tOK
+QTD DEMONSTRATIVOS`;
+
+  const semicolonReport = parseReport(semicolon, "C:\\Claude\\PlanoA\\OUTUBRO_2026\\relatorio.txt", "C:\\Claude");
+  const tabReport = parseReport(tabs, "C:\\Claude\\PlanoB\\OUTUBRO_2026\\relatorio.txt", "C:\\Claude");
+  assert.equal(semicolonReport.paymentDescription.rows[0][2], "R$ 480,00");
+  assert.equal(tabReport.paymentDescription.rows[0][2], "R$ 875,00");
+});
+
+test("mantém Caberj e Caberj Integral como convênios distintos", () => {
+  const text = `RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO\nMes desejado (Relatorio Controle.txt): OUTUBRO 2026 | Mes/Ano consultado no portal: 09/2026`;
+  const caberj = parseReport(text, "C:\\Base\\Caberj\\OUTUBRO_2026\\relatorio_Caberj.txt", "C:\\Base");
+  const integral = parseReport(text, "C:\\Base\\CaberjIntegral\\OUTUBRO_2026\\relatorio_CaberjIntegral.txt", "C:\\Base");
+
+  assert.equal(caberj.agreement, "Caberj");
+  assert.equal(integral.agreement, "Caberj Integral");
+  assert.notEqual(caberj.agreement, integral.agreement);
+  assert.equal(caberj.periodMonth, 10);
+  assert.equal(caberj.periodYear, 2026);
+  assert.equal(integral.periodMonth, 10);
+  assert.equal(integral.periodYear, 2026);
 });
 
 test("interpreta DESCRICAO PAGAMENTO separada por barras e varias datas", () => {
@@ -248,4 +310,30 @@ FIM DO RELATORIO`;
   assert.equal(report.guideInformation[0].rows.length, 3);
   assert.equal(report.guideInformation[0].guideCount, 2);
   assert.deepEqual(report.guideInformation[0].total, ["TOTAL (2 guias)", "450,00", "450,00"]);
+});
+
+test("preserva dois demonstrativos da Intermedica no mesmo mês", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "demonstrativos-intermedica-"));
+  const folder = path.join(root, "Intermedica", "OUTUBRO_2026");
+  fs.mkdirSync(folder, { recursive: true });
+  const reportFor = (date, amount) => `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - INTERMEDICA
+Data do Pagamento informado pelo Convenio: ${date}
+Mes/ano processado: OUTUBRO/2026
+DESCRICAO PAGAMENTO
+Data Pagamento | Valor Apresentado | Valor Liberado | Download
+${date} | R$ ${amount} | R$ ${amount} | OK
+QTD DEMONSTRATIVOS`;
+
+  try {
+    fs.writeFileSync(path.join(folder, "relatorio_Intermedica_20-10-2026.txt"), reportFor("20/10/2026", "220.732,99"));
+    fs.writeFileSync(path.join(folder, "relatorio_Intermedica_30-10-2026.txt"), reportFor("30/10/2026", "660,00"));
+
+    const result = loadReports(root);
+    const intermedica = result.reports.filter((report) => report.agreement === "Intermedica");
+    assert.equal(intermedica.length, 2);
+    assert.deepEqual(intermedica.map((report) => report.paymentDateText).sort(), ["20/10/2026", "30/10/2026"]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });

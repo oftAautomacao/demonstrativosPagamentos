@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   analyzeStatementText,
   buildPlanCandidates,
+  consolidateStatementMatches,
   detectStatementBank,
 } = require("../statement-analyzer");
 
@@ -172,10 +173,13 @@ DES: AMIL ASSISTENCIA MED
 `, candidates);
 
   assert.deepEqual(result.matches.map((item) => item.planName), [
+    "Bradesco",
     "Caberj Integral Saúde",
     "Caixa de Assistência",
     "Mediservice",
   ]);
+  const bradesco = result.matches.find((item) => item.planName === "Bradesco");
+  assert.equal(bradesco.occurrences[0].paymentAmount, "985,40");
   const mediservice = result.matches.find((item) => item.planName === "Mediservice");
   assert.equal(mediservice.occurrences[0].paymentAmount, "1.722,80");
 });
@@ -193,4 +197,72 @@ REMET.CAIXA ASSISTENCIAL
 
   assert.deepEqual(result.matches.map((item) => item.planName), ["Caixa de Assistência"]);
   assert.equal(result.matches[0].occurrences[0].paymentAmount, "2.500,00");
+});
+
+test("reconhece CX Assistência truncada", () => {
+  const result = analyzeStatementText(`
+01/11/2026 PIX RECEBIDO REM: CX ASSIST 1.250,00
+`, buildPlanCandidates());
+
+  assert.deepEqual(result.matches.map((item) => item.planName), ["Caixa de Assistência"]);
+  assert.equal(result.matches[0].occurrences[0].paymentAmount, "1.250,00");
+});
+
+test("não trata CNPJ seguido apenas de ASSISTENCIA como plano", () => {
+  const result = analyzeStatementText(`
+2.800,00 C
+26/10 17:12 23942313000164 ASSISTENCIA
+26/10/2026
+`, buildPlanCandidates());
+  assert.deepEqual(result.matches, []);
+});
+
+test("não trata assistência genérica sem caixa ou CNPJ como plano", () => {
+  const result = analyzeStatementText(`
+01/11/2026 PAGAMENTO ASSISTENCIA TECNICA 500,00
+`, buildPlanCandidates());
+  assert.deepEqual(result.matches, []);
+});
+
+test("reconhece cada PGTO SINISTRO AP CERTIF como pagamento Bradesco", () => {
+  const result = analyzeStatementText(`
+14/10/2026
+PGTO.SINISTRO AP/CERTIF.
+1314071
+5.519,16
+5.771,08
+PGTO.SINISTRO AP/CERTIF.
+1314072
+2.410,84
+8.181,92
+`, buildPlanCandidates());
+  const bradesco = result.matches.find((item) => item.planName === "Bradesco");
+  assert.equal(bradesco.occurrences.length, 2);
+  assert.deepEqual(bradesco.occurrences.map((item) => item.paymentAmount), ["5.519,16", "2.410,84"]);
+});
+
+test("consolida Sulamerica e Intermédica por data sem juntar sinistros Bradesco", () => {
+  const result = consolidateStatementMatches([{
+    planName: "Sulamerica",
+    occurrences: [
+      { paymentDate: "09/10/2026", paymentAmount: "3.798,80", evidence: "COMPANHIA" },
+      { paymentDate: "09/10/2026", paymentAmount: "231,59", evidence: "PARANA" },
+    ],
+  }, {
+    planName: "Intermédica",
+    occurrences: [
+      { paymentDate: "30/10/2026", paymentAmount: "300,00" },
+      { paymentDate: "30/10/2026", paymentAmount: "360,00" },
+    ],
+  }, {
+    planName: "Bradesco",
+    occurrences: [
+      { paymentDate: "14/10/2026", paymentAmount: "5.519,16" },
+      { paymentDate: "14/10/2026", paymentAmount: "2.410,84" },
+    ],
+  }]);
+
+  assert.equal(result[0].occurrences[0].paymentAmount, "4.030,39");
+  assert.equal(result[1].occurrences[0].paymentAmount, "660,00");
+  assert.equal(result[2].occurrences.length, 2);
 });

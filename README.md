@@ -19,12 +19,22 @@ python -m pip install -r requirements.txt
 
 ## O que o painel exibe
 
-- Aba **Tesouraria** para carregar extratos PDF, CSV, OFX ou TXT e listar plano, data de pagamento e valor pago de cada crédito identificado;
+- Aba **Tesouraria** com **Informações importadas** como página principal e **Importar extrato** como página secundária, acessadas pelas abas compactas do cabeçalho à direita;
+- A página **Importar extrato** aceita selecionar ou arrastar vários arquivos de uma só vez, processando-os sequencialmente e atualizando a tabela ao final;
+- Coluna **Creditado** com identificação visual do Bradesco ou Banco do Brasil usando as imagens locais do projeto;
+- Extração de cada crédito `PGTO.SINISTRO AP/CERTIF.` como pagamento Bradesco, inclusive quando há vários créditos no mesmo dia;
+- Reconhecimento das variações e nomes truncados dos convênios, mantendo `CX Assistência` sem tentar atribuí-la a um plano desconhecido;
+- Consolidação por plano e data apenas quando o banco apresenta um mesmo pagamento fragmentado (Sulamerica e Intermédica/Notre Dame);
 - Evidências encontradas no extrato para conferência de cada convênio identificado, sem armazenar o arquivo enviado;
-- Salvamento automático dos pagamentos no Firebase Realtime Database em `/OFT/Faturamento/Tesouraria/{plano}/{aaaa-mm-dd}/{banco}/valorExtrato`; Bradesco e Banco do Brasil ficam como fontes complementares, enquanto o reenvio do extrato do mesmo banco substitui seus valores; quando há mais de um pagamento do mesmo plano, banco e data, são usados `valorExtrato2`, `valorExtrato3` e assim por diante;
+- Salvamento automático dos pagamentos no Firebase Realtime Database em `/OFT/Faturamento/Tesouraria/{plano}/{aaaa-mm-dd}/{banco}/valorExtrato`; Bradesco e Banco do Brasil ficam como fontes complementares, enquanto o reenvio limpa e substitui somente os registros do mesmo banco e mês; quando há mais de um pagamento do mesmo plano, banco e data, são usados `valorExtrato2`, `valorExtrato3` e assim por diante;
 - Carregamento automático, ao abrir a Tesouraria, de todos os pagamentos já armazenados no Firebase de teste;
+- Na Tesouraria, somente pagamentos cuja identificação original seja `CX Assistência`, `Caixa de Assistência` ou `Caixa Assistencial` exibem uma caneta para corrigir o plano; o nome editado fica associado ao pagamento no Firebase sem alterar data, banco ou valor;
 - Navegação de competência no cabeçalho, com mês e ano juntos e setas que percorrem somente os períodos encontrados nos relatórios;
+- Os relatórios são carregados automaticamente na abertura da página, sem contador, caminho da pasta ou botão de atualização no menu lateral;
 - Lista automática dos planos disponíveis na competência escolhida;
+- Caberj e Caberj Integral são reconhecidos como convênios distintos, inclusive quando a pasta utiliza o nome `CaberjIntegral`;
+- Na aba **Demonstrativo**, a tabela **Descrição do Pagamento** aceita largura fixa, barras, caixas Unicode, ponto e vírgula e tabulação; se o alinhamento visual falhar, as colunas financeiras são corrigidas pelos valores monetários completos sem remover o parser original;
+- Na aba **Configuração**, a coluna **Data Download Demonstrativo** funciona como rascunho independente do `Relatorio Controle.txt` e é carregada/salva por convênio no Firebase de teste em `/faturamento/demonstrativos/painelControl/AbaConfiguracao/informacao1`;
 - Lista suspensa de planos e configuração lateral da `Data Desejada`, organizadas em um único painel, com leitura e salvamento automático do mês/ano diretamente no campo `DATA DESEJADA:` do `Relatorio Controle.txt`, sem alterar o restante do arquivo;
 - Nome do plano e relatório de demonstrativos de pagamento;
 - Tela inicial simplificada com pagamentos agrupados por data e somatório total;

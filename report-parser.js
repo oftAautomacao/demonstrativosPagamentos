@@ -70,6 +70,78 @@ function sliceFixedWidthRow(line, starts) {
   return starts.map((start, index) => clean(line.slice(start, starts[index + 1] ?? line.length)));
 }
 
+const PAYMENT_DESCRIPTION_COLUMNS = [
+  { label: "Numero Processo", pattern: /\bnumero\s+(?:do\s+)?processo\b/ },
+  { label: "Numero Lote", pattern: /\bnumero\s+(?:do\s+)?lote\b/ },
+  { label: "Previsao Pagamento", pattern: /\bprevisao\s+(?:de\s+)?pag(?:amento)?\b/ },
+  { label: "Data Pagamento", pattern: /\bdata\s+(?:de\s+)?pagamento\b/ },
+  { label: "Valor Apresentado", pattern: /\bvalor\s+(?:apresentado|informado)\b/ },
+  { label: "Valor Producao", pattern: /\bvalor\s+(?:de\s+)?producao\b/ },
+  { label: "Valor Liberado", pattern: /\bvalor\s+liberado\b/ },
+  { label: "Valor Pagamento", pattern: /\bvalor\s+(?:de\s+)?pagamento\b/ },
+  { label: "PCC", pattern: /\bpcc(?:\s*\([^)]*\))?/ },
+  { label: "IRRF", pattern: /\birrf\b/ },
+  { label: "ISS", pattern: /\biss\b/ },
+  { label: "INSS", pattern: /\binss\b/ },
+  { label: "Download", pattern: /\bdownload\b/ },
+];
+
+function semanticPaymentColumns(header) {
+  const normalized = normalizeKey(header);
+  return PAYMENT_DESCRIPTION_COLUMNS
+    .map((definition) => {
+      const match = normalized.match(definition.pattern);
+      return match ? { label: definition.label, start: match.index } : null;
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.start - right.start);
+}
+
+function isFinancialColumn(column = "") {
+  return /valor|pcc|irrf|iss|inss|pis|cofins|csll|tarifa/.test(normalizeKey(column));
+}
+
+function repairFixedPaymentRow(line, columns, starts) {
+  const values = sliceFixedWidthRow(line, starts);
+  const normalizedColumns = columns.map(normalizeKey);
+  const financialIndexes = columns
+    .map((column, index) => (isFinancialColumn(column) ? index : -1))
+    .filter((index) => index >= 0);
+  const amounts = [...String(line).matchAll(/(?:R\$\s*)?-?\d[\d.]*,\d{2}/g)];
+
+  // O corte por posicao continua sendo a primeira leitura. Quando a IA desloca
+  // o cabecalho alguns caracteres, os valores monetarios completos corrigem
+  // somente as colunas financeiras, sem alterar os demais formatos aceitos.
+  if (financialIndexes.length && amounts.length === financialIndexes.length) {
+    financialIndexes.forEach((columnIndex, amountIndex) => {
+      values[columnIndex] = clean(amounts[amountIndex][0]);
+    });
+  }
+
+  const dateIndex = normalizedColumns.findIndex((column) => /data|previsao/.test(column));
+  const dateMatch = String(line).match(/\b\d{2}\/\d{2}\/\d{4}\b/);
+  if (dateIndex >= 0 && dateMatch) {
+    values[dateIndex] = dateMatch[0];
+    const identifierIndexes = normalizedColumns
+      .map((column, index) => (index < dateIndex && /numero|processo|lote/.test(column) ? index : -1))
+      .filter((index) => index >= 0);
+    const identifiers = clean(line.slice(0, dateMatch.index)).split(/\s+/).filter(Boolean);
+    if (identifierIndexes.length && identifiers.length >= identifierIndexes.length) {
+      identifierIndexes.forEach((columnIndex, identifierIndex) => {
+        values[columnIndex] = identifiers[identifierIndex];
+      });
+    }
+  }
+
+  const downloadIndex = normalizedColumns.findIndex((column) => /download|arquivo/.test(column));
+  if (downloadIndex >= 0 && amounts.length) {
+    const lastAmount = amounts.at(-1);
+    const suffix = clean(line.slice(lastAmount.index + lastAmount[0].length));
+    if (suffix) values[downloadIndex] = suffix;
+  }
+  return values;
+}
+
 function sliceGuideTotalRow(line, columnCount, starts) {
   const amounts = [...line.matchAll(/(?:R\$\s*)?-?\d[\d.]*,\d{2}/g)];
   if (amounts.length === 0) return sliceFixedWidthRow(line, starts);
@@ -83,11 +155,11 @@ function sliceGuideTotalRow(line, columnCount, starts) {
 }
 
 function hasTableDelimiter(line = "") {
-  return /[|\u2502\u2551]/.test(line);
+  return /[|\u2502\u2551;\t]/.test(line);
 }
 
 function splitDelimitedRow(line = "") {
-  const values = String(line).split(/[|\u2502\u2551]/).map(clean);
+  const values = String(line).split(/[|\u2502\u2551;\t]/).map(clean);
   if (!values[0]) values.shift();
   if (!values.at(-1)) values.pop();
   return values;
@@ -105,7 +177,11 @@ function parsePaymentDescription(lines) {
   if (pipeDelimited) {
     columns = splitDelimitedRow(header);
   } else {
-    const definitions = fixedWidthColumns(header);
+    const positionalDefinitions = fixedWidthColumns(header);
+    const semanticDefinitions = semanticPaymentColumns(header);
+    const definitions = semanticDefinitions.length >= positionalDefinitions.length
+      ? semanticDefinitions
+      : positionalDefinitions;
     columns = definitions.map((column) => column.label);
     starts = definitions.map((column) => column.start);
   }
@@ -115,7 +191,7 @@ function parsePaymentDescription(lines) {
   for (const line of section.slice(1)) {
     const values = pipeDelimited
       ? splitDelimitedRow(line)
-      : sliceFixedWidthRow(line, starts);
+      : repairFixedPaymentRow(line, columns, starts);
     while (values.length < columns.length) values.push("");
     const normalizedFirst = normalizeKey(values[0] || "");
     if (normalizedFirst.startsWith("total")) total = values.slice(0, columns.length);
@@ -335,15 +411,15 @@ const MONTHS = [
 function extractPeriodParts(...values) {
   for (const value of values.filter(Boolean)) {
     const normalized = normalizeKey(value);
-    const yearMatch = normalized.match(/\b(20\d{2})\b/);
+    const yearMatch = normalized.match(/(?:^|\D)(20\d{2})(?:\D|$)/);
     if (!yearMatch) continue;
 
     let month = 0;
-    const numericMonth = normalized.match(/(?:^|\D)(0?[1-9]|1[0-2])[\/_-](?:20\d{2})(?:\D|$)/);
-    if (numericMonth) month = Number(numericMonth[1]);
+    const monthIndex = MONTHS.findIndex((name) => normalized.includes(normalizeKey(name)));
+    if (monthIndex >= 0) month = monthIndex + 1;
     if (!month) {
-      const monthIndex = MONTHS.findIndex((name) => normalized.includes(normalizeKey(name)));
-      if (monthIndex >= 0) month = monthIndex + 1;
+      const numericMonth = normalized.match(/(?:^|\D)(0?[1-9]|1[0-2])[\/_-](?:20\d{2})(?:\D|$)/);
+      if (numericMonth) month = Number(numericMonth[1]);
     }
     if (month) return { month, monthName: MONTHS[month - 1], year: Number(yearMatch[1]) };
   }
@@ -411,7 +487,9 @@ function inferContext(filePath, rootPath) {
   const parts = relative.split(path.sep);
   const projectIndex = parts.findIndex((part) => normalizeKey(part) === "demonstpagprojeto");
   const baseIndex = projectIndex >= 0 ? projectIndex + 1 : 0;
-  const agreement = clean((parts[baseIndex] || "Plano não identificado").replace(/_/g, " "));
+  const agreement = clean((parts[baseIndex] || "Plano não identificado")
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, "$1 $2"));
   const period = parts.length > baseIndex + 2 ? parts[baseIndex + 1] : path.basename(path.dirname(filePath));
   return { agreement, period, relativePath: relative };
 }
@@ -435,7 +513,10 @@ function parseReport(text, filePath, rootPath, stats = {}) {
   const paymentCents = sum(items, "paymentCents") || sum(paymentsByDate, "paymentCents") || extractSummaryMoney(lines, "SOMATORIO VALOR PAGAMENTO") || extractSummaryMoney(lines, "Valor Liberado");
   const summaryTaxes = extractSummaryMoney(lines, "SOMATORIO TOTAL DOS IMPOSTOS");
   const processedPeriodSource = findValue(lines, "Mes/ano processado") || findValue(lines, "Periodo pesquisado");
-  const requestedPeriod = findValue(lines, "Mes/Ano de pagamento solicitado") || findValue(lines, "Mes/Ano de pagamento desejado") || processedPeriodSource;
+  const requestedPeriod = findValue(lines, "Mes/Ano de pagamento solicitado")
+    || findValue(lines, "Mes/Ano de pagamento desejado")
+    || findValue(lines, "Mes desejado")
+    || processedPeriodSource;
   const periodParts = extractPeriodParts(requestedPeriod, processedPeriodSource, context.period, paymentDates[0]);
   if (paymentsByDate.length === 0 && paymentDates.length === 1) {
     paymentsByDate = [{ paymentDate: paymentDates[0], presentedCents: productionCents, paymentCents, entries: items.length || 1 }];

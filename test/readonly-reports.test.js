@@ -31,6 +31,29 @@ test("lê somente relatórios de conta médica por convênio", () => {
   }
 });
 
+test("lê relatorio Guia_00-00-0000 de Caberj e Caberj Integral", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "readonly-caberj-"));
+  try {
+    for (const plan of ["Caberj", "CaberjIntegral"]) {
+      const period = path.join(root, plan, "OUTUBRO_2026");
+      fs.mkdirSync(period, { recursive: true });
+      fs.writeFileSync(
+        path.join(period, "relatorio Guia_00-00-0000.txt"),
+        "CodConvenio | Guia | TUSS | Valor | Valor Informado | Data | Nome\n123 | 1 | XXX | 100,00 | 100,00 | 01/10/2026 | TESTE",
+        "utf8",
+      );
+    }
+
+    const result = readReadonlyReports(root, "medical");
+    assert.deepEqual(result.documents.map((document) => document.planName), ["Caberj", "Caberj Integral"]);
+    assert.ok(result.documents.every((document) => document.fileName === "relatorio Guia_00-00-0000.txt"));
+    assert.ok(result.documents.every((document) => document.reportDate === "00/00/0000"));
+    assert.ok(result.documents.every((document) => document.medicalTable.rows.length === 1));
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("lê somente relatórios de importação e preserva o texto original", () => {
   const root = fixture();
   try {

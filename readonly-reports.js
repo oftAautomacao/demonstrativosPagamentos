@@ -20,6 +20,14 @@ function periodLabel(folderName) {
   return `${month.charAt(0).toLocaleUpperCase("pt-BR")}${month.slice(1)} ${match[2]}`;
 }
 
+function displayPlanName(folderName) {
+  return String(folderName)
+    .replace(/[_-]+/g, " ")
+    .replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, "$1 $2")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
 function clean(value = "") {
   return String(value).trim().replace(/\s+/g, " ");
 }
@@ -244,7 +252,7 @@ function readReadonlyReports(rootPath, type) {
         documents.push({
           id: crypto.createHash("sha1").update(filePath).digest("hex").slice(0, 16),
           type,
-          planName: plan.name,
+          planName: displayPlanName(plan.name),
           periodName: period.name,
           periodLabel: periodLabel(period.name),
           fileName: entry.name,

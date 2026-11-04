@@ -11,7 +11,14 @@ const { readControlPayments } = require("./control-payments");
 const { readPlanCredentials, writePlanCredentials } = require("./plan-credentials");
 const { readReadonlyReports } = require("./readonly-reports");
 const { analyzeUploadedStatement, buildPlanCandidates } = require("./statement-analyzer");
-const { checkTreasuryFirebase, loadTreasuryPayments, saveTreasuryPayments } = require("./treasury-firebase");
+const {
+  checkTreasuryFirebase,
+  firebaseKey,
+  loadTreasuryPayments,
+  saveTreasuryPayments,
+  updateTreasuryPaymentPlan,
+} = require("./treasury-firebase");
+const { loadConfigDownloadDates, saveConfigDownloadDate } = require("./config-draft-firebase");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -39,6 +46,10 @@ const contentTypes = {
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".ico": "image/x-icon",
 };
 
 function sendJson(response, status, body) {
@@ -172,6 +183,19 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/treasury/payment-plan") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, await updateTreasuryPaymentPlan(body));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível alterar o nome do plano.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
   if (request.method === "GET" && requestUrl.pathname === "/api/treasury/firebase-status") {
     try {
       sendJson(response, 200, await checkTreasuryFirebase());
@@ -212,10 +236,39 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && requestUrl.pathname === "/api/import-config") {
     try {
-      sendJson(response, 200, readImportConfig(CONTROL_REPORT_PATH));
+      const config = readImportConfig(CONTROL_REPORT_PATH);
+      try {
+        const draft = await loadConfigDownloadDates();
+        config.rows = config.rows.map((row) => ({
+          ...row,
+          downloadDate: draft.dates[firebaseKey(row.agreement)] || "",
+        }));
+        config.draft = {
+          environment: draft.environment,
+          path: draft.path,
+          count: draft.count,
+        };
+      } catch (draftError) {
+        config.rows = config.rows.map((row) => ({ ...row, downloadDate: "" }));
+        config.draftError = draftError.message;
+      }
+      sendJson(response, 200, config);
     } catch (error) {
       sendJson(response, 500, {
         error: "Nao foi possivel ler a configuracao de importacao.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/config-download-date") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, await saveConfigDownloadDate(body.agreement, body.downloadDate));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível salvar a data de download do demonstrativo.",
         detail: error.message,
       });
     }

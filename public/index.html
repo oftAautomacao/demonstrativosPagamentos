@@ -70,15 +70,6 @@
           </button>
           </nav>
 
-          <div class="sidebar-footer">
-            <div class="footer-status-row">
-              <div class="source-status"><span class="status-dot"></span><span id="scan-status">Lendo relatórios...</span></div>
-              <button id="refresh-button" class="refresh-button" type="button" title="Atualizar relatórios" aria-label="Atualizar relatórios">
-                <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7" /></svg>
-              </button>
-            </div>
-            <p class="source-path" title="Pasta monitorada"><span id="root-path"></span></p>
-          </div>
         </section>
       </aside>
 
@@ -115,6 +106,16 @@
                 </div>
               </div>
               <div class="report-header-actions">
+                <nav class="plan-inner-tabs hidden" id="treasury-inner-tabs" aria-label="Páginas da Tesouraria">
+                  <button class="active" id="treasury-records-tab" type="button" data-treasury-view="records" aria-selected="true">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v14H4zM8 9h8M8 13h8M8 17h5" /></svg>
+                    Informações importadas
+                  </button>
+                  <button id="treasury-import-tab" type="button" data-treasury-view="import" aria-selected="false">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M4 19h16" /></svg>
+                    Importar extrato
+                  </button>
+                </nav>
                 <nav class="plan-inner-tabs hidden" id="plan-inner-tabs" aria-label="Configurações específicas dos convênios">
                   <button class="active" type="button" data-plan-view="tuss">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 6-5 6 5 6M16 6l5 6-5 6M14 4l-4 16" /></svg>
@@ -168,7 +169,7 @@
 
             <article class="config-table-panel hidden" id="config-content">
               <div class="config-table-actions" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
-                <h2 style="margin: 0; color: #173246; font-size: 1rem; text-transform: uppercase; letter-spacing: .035em;">Agendamento da Importação</h2>
+                <h2 style="margin: 0; color: #173246; font-size: 1rem; text-transform: uppercase; letter-spacing: .035em;">Agendamento Importação</h2>
                 <button class="config-add-button" id="config-add" type="button">
                   <span aria-hidden="true">+</span> Adicionar
                 </button>
@@ -179,7 +180,8 @@
                     <tr>
                       <th>Convênios</th>
                       <th>Executar importação</th>
-                      <th>Agendamento</th>
+                      <th>Agendamento Importação</th>
+                      <th>Data Download Demonstrativo</th>
                       <th><span class="visually-hidden">Ações</span></th>
                     </tr>
                   </thead>
@@ -221,48 +223,51 @@
 
           <section class="primary-panel overview-content" id="treasury-panel">
             <section class="statement-home" id="statement-home">
-              <article class="statement-hero">
-                <div class="statement-hero-copy">
-                  <span class="eyebrow">Conferência de recebimentos</span>
-                  <h2>Quais convênios pagaram?</h2>
-                  <p>Carregue o extrato de pagamento e o painel localizará os convênios pagadores entre os planos já cadastrados.</p>
-                  <div class="statement-format-list" aria-label="Formatos aceitos">
-                    <span>PDF</span><span>CSV</span><span>OFX</span><span>TXT</span><small>até 12 MB</small>
+              <div class="treasury-page hidden" id="treasury-import-view">
+                <article class="statement-hero">
+                  <div class="statement-hero-copy">
+                    <span class="eyebrow">Conferência de recebimentos</span>
+                    <h2>Quais convênios pagaram?</h2>
+                    <p>Carregue o extrato de pagamento e o painel localizará os convênios pagadores entre os planos já cadastrados.</p>
+                    <div class="statement-format-list" aria-label="Formatos aceitos">
+                      <span>PDF</span><span>CSV</span><span>OFX</span><span>TXT</span><small>até 12 MB</small>
+                    </div>
                   </div>
-                </div>
-                <label class="statement-drop-zone" id="statement-drop-zone" for="statement-file-input">
-                  <input id="statement-file-input" type="file" accept=".pdf,.csv,.ofx,.txt,application/pdf,text/csv,text/plain,application/x-ofx" />
-                  <span class="statement-upload-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 15v5h16v-5" /></svg>
-                  </span>
-                  <strong>Selecionar extrato</strong>
-                  <small>ou arraste o arquivo para esta área</small>
-                </label>
-              </article>
+                  <label class="statement-drop-zone" id="statement-drop-zone" for="statement-file-input">
+                    <input id="statement-file-input" type="file" multiple accept=".pdf,.csv,.ofx,.txt,application/pdf,text/csv,text/plain,application/x-ofx" />
+                    <span class="statement-upload-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M4 15v5h16v-5" /></svg>
+                    </span>
+                    <strong>Selecionar extratos</strong>
+                    <small>ou arraste um ou mais arquivos para esta área</small>
+                  </label>
+                </article>
 
-              <div class="statement-progress hidden" id="statement-progress" role="status" aria-live="polite">
-                <span class="tuss-spinner" aria-hidden="true"></span>
-                <span><strong>Analisando o extrato</strong><small id="statement-progress-file"></small></span>
+                <div class="statement-progress hidden" id="statement-progress" role="status" aria-live="polite">
+                  <span class="tuss-spinner" aria-hidden="true"></span>
+                  <span><strong>Analisando os extratos</strong><small id="statement-progress-file"></small></span>
+                </div>
               </div>
 
               <div class="statement-message hidden" id="statement-message" role="alert"></div>
 
-              <section class="statement-results hidden" id="statement-results" aria-live="polite">
-                <header class="statement-results-heading">
-                  <span><small>Resultado da análise</small><strong id="statement-result-title"></strong></span>
-                  <button id="statement-new-analysis" type="button">Analisar outro extrato</button>
-                </header>
-                <div class="statement-result-summary">
-                  <span class="statement-result-count" id="statement-result-count">0</span>
-                  <span>
-                    <strong>pagamento(s) de convênios</strong>
-                    <small id="statement-result-file"></small>
-                    <small class="statement-save-status" id="statement-save-status"></small>
-                  </span>
-                </div>
-                <div class="statement-plan-list" id="statement-plan-list"></div>
-                <p class="statement-result-note">Confira os trechos encontrados antes de prosseguir. O reconhecimento compara o extrato com os nomes dos convênios cadastrados no painel.</p>
-              </section>
+              <div class="treasury-page" id="treasury-records-view">
+                <section class="statement-results hidden" id="statement-results" aria-live="polite">
+                  <header class="statement-results-heading">
+                    <span><small>Histórico da Tesouraria</small><strong id="statement-result-title"></strong></span>
+                    <button id="statement-new-analysis" type="button">Importar outro extrato</button>
+                  </header>
+                  <div class="statement-result-summary">
+                    <span class="statement-result-count" id="statement-result-count">0</span>
+                    <span>
+                      <strong>pagamento(s) de convênios</strong>
+                      <small class="statement-save-status" id="statement-save-status"></small>
+                    </span>
+                  </div>
+                  <div class="statement-plan-list" id="statement-plan-list"></div>
+                  <p class="statement-result-note">Os pagamentos exibidos foram carregados do Firebase de teste. A coluna Creditado identifica o banco de origem de cada recebimento.</p>
+                </section>
+              </div>
             </section>
 
           </section>
@@ -474,6 +479,6 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/table-sort.js?v=20261019a" defer></script>
-    <script src="/app.js?v=20261013q" defer></script>
+    <script src="/app.js?v=20261103c" defer></script>
   </body>
 </html>

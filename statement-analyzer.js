@@ -11,6 +11,7 @@ const GENERIC_WORDS = new Set([
 
 const PLAN_CATALOG = [
   { name: "Amil", aliases: ["Amil Saúde", "Amil Assistência Médica", "Amil Assistência Médica Internacional"] },
+  { name: "Bradesco", aliases: ["PGTO.SINISTRO AP/CERTIF", "PGTO SINISTRO AP CERTIF", "PAGAMENTO SINISTRO AP CERTIF"] },
   { name: "Bradesco Operadora", aliases: ["Bradesco Operadora", "Operadora Bradesco", "Bradesco Operadora de Planos"] },
   { name: "Bradesco Saúde", aliases: ["Bradesco Saúde", "Bradesco Seguros Saúde", "Bradesco Saúde S.A."] },
   { name: "Caberj", aliases: ["Caberj", "Caberj Saúde", "Caixa de Assistência à Saúde Caberj"] },
@@ -32,7 +33,7 @@ const PLAN_CATALOG = [
   { name: "Sulamerica", aliases: ["Sulamerica", "Sul América", "Sul América Saúde", "Sul América Companhia de Seguro Saúde"] },
   { name: "Telos Benner", aliases: ["Telos Benner", "Telos Fundação Embratel", "Fundação Embratel de Seguridade Social", "Benner Saúde Telos"] },
   { name: "Unimed", aliases: ["Unimed", "Unimed Rio", "Unimed Ferj", "Unimed Federação", "Unimed Seguros Saúde", "Unimed Cooperativa de Trabalho Médico"] },
-  { name: "Caixa de Assistência", aliases: ["Caixa de Assistência", "Caixa Assistencial", "Caixa de Assistenci", "Caixa Assistenci", "Caixa A A Saúde"] },
+  { name: "Caixa de Assistência", aliases: ["Caixa de Assistência", "Caixa Assistencial", "Caixa de Assistenci", "Caixa Assistenci", "Caixa A A Saúde", "CX Assistência", "CX Assistencial", "CX Assistenci", "CX Assist"] },
 ];
 
 function normalize(value = "") {
@@ -102,6 +103,21 @@ function aliasMatchScore(normalizedLine, alias) {
   return Math.round((matches / tokens.length) * 500) + matches * 20 + Math.min(alias.length, 99);
 }
 
+function genericAssistanceScore(normalizedLine) {
+  if (!normalizedLine) return 0;
+  if (/\b(?:cx|caixa)(?:\s+de)?\s+assist[a-z]*\b/.test(normalizedLine)) return 850;
+  return 0;
+}
+
+function planMatchScore(candidate, normalizedLine) {
+  let score = Math.max(0, ...candidate.aliases.map((alias) => aliasMatchScore(normalizedLine, alias)));
+  if (candidate.name === "Caixa de Assistência") {
+    score = Math.max(score, genericAssistanceScore(normalizedLine));
+    score = Math.min(score, 300);
+  }
+  return score;
+}
+
 function searchableEntries(lines) {
   const entries = lines.map((line, index) => ({ evidence: line, normalized: normalize(line), start: index, end: index }));
   for (const size of [2, 3]) {
@@ -118,7 +134,7 @@ function contextFinancialDirection(lines, entry) {
   if (/\b(?:pix enviado|pix envidado|pagamento de boleto|pagto de boleto|transferencia enviada|transf enviada|des)\b/.test(context)) {
     return "debit";
   }
-  if (/\b(?:pix recebido|credito cassi|recebimento fornecedor|receb por fornecimento|ted credito|remet|rem)\b/.test(context)) {
+  if (/\b(?:pix recebido|credito cassi|recebimento fornecedor|receb por fornecimento|ted credito|pgto sinistro|remet|rem)\b/.test(context)) {
     return "credit";
   }
   return "";
@@ -202,8 +218,7 @@ function analyzeStatementText(text, candidates = []) {
     let bestCandidate = null;
     let bestScore = 0;
     for (const candidate of candidates) {
-      let score = Math.max(0, ...candidate.aliases.map((alias) => aliasMatchScore(entry.normalized, alias)));
-      if (candidate.name === "Caixa de Assistência") score = Math.min(score, 300);
+      const score = planMatchScore(candidate, entry.normalized);
       if (score > bestScore) {
         bestCandidate = candidate;
         bestScore = score;
@@ -226,7 +241,7 @@ function analyzeStatementText(text, candidates = []) {
     let identityIndex = -1;
     let identityScore = 0;
     for (let index = entry.start; index <= entry.end; index += 1) {
-      const score = Math.max(0, ...bestCandidate.aliases.map((alias) => aliasMatchScore(normalize(lines[index]), alias)));
+      const score = planMatchScore(bestCandidate, normalize(lines[index]));
       if (score > identityScore) {
         identityIndex = index;
         identityScore = score;
@@ -268,6 +283,42 @@ function analyzeStatementText(text, candidates = []) {
     matches: matches.sort((a, b) => a.planName.localeCompare(b.planName, "pt-BR")),
     analyzedLines: lines.length,
   };
+}
+
+const CONSOLIDATE_BY_DATE_PLANS = new Set(["Sulamerica", "Intermédica"]);
+
+function amountToCents(value = "") {
+  const normalized = String(value).replace(/[^\d,]/g, "").replace(",", ".");
+  const number = Number(normalized);
+  return Number.isFinite(number) ? Math.round(number * 100) : 0;
+}
+
+function centsToAmount(cents) {
+  return (Number(cents) / 100).toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+    useGrouping: true,
+  });
+}
+
+function consolidateStatementMatches(matches = []) {
+  return matches.map((match) => {
+    if (!CONSOLIDATE_BY_DATE_PLANS.has(match.planName)) return match;
+    const byDate = new Map();
+    for (const occurrence of match.occurrences || []) {
+      const key = occurrence.paymentDate || `sem-data-${byDate.size}`;
+      const existing = byDate.get(key);
+      if (!existing) {
+        byDate.set(key, { ...occurrence });
+        continue;
+      }
+      existing.paymentAmount = centsToAmount(
+        amountToCents(existing.paymentAmount) + amountToCents(occurrence.paymentAmount),
+      );
+      existing.evidence = [existing.evidence, occurrence.evidence].filter(Boolean).join(" + ");
+    }
+    return { ...match, occurrences: [...byDate.values()] };
+  });
 }
 
 function decodeTextBuffer(buffer) {
@@ -366,6 +417,7 @@ async function analyzeUploadedStatement({ fileName, base64, candidates }) {
     throw new Error("Não foi possível encontrar texto no extrato. Se ele for uma imagem digitalizada, exporte-o novamente com texto pesquisável.");
   }
   const analysis = analyzeStatementText(text, candidates);
+  analysis.matches = consolidateStatementMatches(analysis.matches);
   const fileHash = crypto.createHash("sha256").update(buffer).digest("hex");
   let occurrenceIndex = 0;
   for (const match of analysis.matches) {
@@ -393,6 +445,7 @@ module.exports = {
   analyzeStatementText,
   analyzeUploadedStatement,
   buildPlanCandidates,
+  consolidateStatementMatches,
   detectStatementBank,
   normalize,
 };

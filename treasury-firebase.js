@@ -81,9 +81,24 @@ function reaisNumber(value = "") {
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
 }
 
+function isEditableAssistancePlan(value = "") {
+  const normalized = String(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR");
+  return /^(?:cx|caixa)(?:\s+de)?\s+assist/.test(normalized);
+}
+
+function treasuryPlanNameKey(paymentKey = "") {
+  const match = String(paymentKey).match(/^valorExtrato(\d*)$/);
+  return match ? `nomePlano${match[1]}` : "";
+}
+
 function buildTreasuryPatch(matches = [], { sourceBank = "Banco não identificado" } = {}) {
   const patch = {};
   const paymentsByPath = new Map();
+  const months = new Set();
   const bank = firebaseKey(sourceBank);
   let skipped = 0;
   for (const match of matches) {
@@ -95,6 +110,7 @@ function buildTreasuryPatch(matches = [], { sourceBank = "Banco não identificad
         skipped += 1;
         continue;
       }
+      months.add(date.slice(0, 7));
       const paymentPath = `${plan}/${date}/${bank}`;
       if (!paymentsByPath.has(paymentPath)) paymentsByPath.set(paymentPath, []);
       paymentsByPath.get(paymentPath).push(value);
@@ -108,7 +124,23 @@ function buildTreasuryPatch(matches = [], { sourceBank = "Banco não identificad
     ]));
     count += values.length;
   }
-  return { patch, count, skipped };
+  return { patch, count, skipped, months: [...months] };
+}
+
+function buildBankCleanupPatch(data, { sourceBank, months = [] } = {}) {
+  const cleanup = {};
+  const bank = firebaseKey(sourceBank);
+  const monthSet = new Set(months);
+  for (const [planName, dates] of Object.entries(data && typeof data === "object" ? data : {})) {
+    if (!dates || typeof dates !== "object") continue;
+    for (const [date, dateNode] of Object.entries(dates)) {
+      if (!monthSet.has(String(date).slice(0, 7)) || !dateNode || typeof dateNode !== "object") continue;
+      if (Object.prototype.hasOwnProperty.call(dateNode, bank)) {
+        cleanup[`${firebaseKey(planName)}/${date}/${bank}`] = null;
+      }
+    }
+  }
+  return cleanup;
 }
 
 async function saveTreasuryPayments(matches, {
@@ -125,12 +157,26 @@ async function saveTreasuryPayments(matches, {
   if (authToken) query.set("auth", authToken);
   const baseUrl = String(databaseUrl).replace(/\/+$/, "");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), 30_000);
   try {
+    const readQuery = new URLSearchParams();
+    if (authToken) readQuery.set("auth", authToken);
+    const readSuffix = readQuery.size ? `?${readQuery}` : "";
+    const readResponse = await firebaseRequest(`${baseUrl}/${TREASURY_PATH}.json${readSuffix}`, {
+      method: "GET",
+      signal: controller.signal,
+    }, fetchImpl);
+    const readDetail = String(await readResponse.text());
+    if (!readResponse.ok) {
+      throw new Error(`Firebase respondeu com HTTP ${readResponse.status}${readDetail ? `: ${readDetail.slice(0, 500)}` : ""}`);
+    }
+    const existingData = readDetail ? JSON.parse(readDetail) : null;
+    const cleanup = buildBankCleanupPatch(existingData, { sourceBank, months: payload.months });
+    const updatePatch = { ...cleanup, ...payload.patch };
     const response = await firebaseRequest(`${baseUrl}/${TREASURY_PATH}.json?${query}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload.patch),
+      body: JSON.stringify(updatePatch),
       signal: controller.signal,
     }, fetchImpl);
     if (!response.ok) {
@@ -164,8 +210,16 @@ function parseTreasuryData(data) {
           });
         if (!values.length) continue;
         foundBankStructure = true;
-        for (const [, value] of values) {
-          payments.push({ planName, paymentDate, paymentAmount: Number(value), sourceBank });
+        for (const [paymentKey, value] of values) {
+          const editedPlanName = String(bankNode[treasuryPlanNameKey(paymentKey)] || "").trim();
+          payments.push({
+            planName: editedPlanName || planName,
+            originalPlanName: planName,
+            paymentDate,
+            paymentAmount: Number(value),
+            paymentKey,
+            sourceBank,
+          });
         }
       }
       if (foundBankStructure) continue;
@@ -176,6 +230,7 @@ function parseTreasuryData(data) {
         if (Number.isFinite(Number(value))) {
           payments.push({
             planName,
+            originalPlanName: planName,
             paymentDate,
             paymentAmount: Number(value),
             sourceBank: "Importação anterior",
@@ -185,11 +240,89 @@ function parseTreasuryData(data) {
     }
   }
   payments.sort((a, b) => (
-    b.paymentDate.localeCompare(a.paymentDate)
-    || a.planName.localeCompare(b.planName, "pt-BR")
+    a.planName.localeCompare(b.planName, "pt-BR", { sensitivity: "base" })
+    || a.paymentDate.localeCompare(b.paymentDate)
     || a.sourceBank.localeCompare(b.sourceBank, "pt-BR")
   ));
   return payments;
+}
+
+async function updateTreasuryPaymentPlan({
+  currentPlanName,
+  newPlanName,
+  paymentDate,
+  sourceBank,
+  paymentKey,
+} = {}, {
+  fetchImpl = globalThis.fetch,
+  databaseUrl = FIREBASE_DATABASE_URL,
+} = {}) {
+  if (typeof fetchImpl !== "function") throw new Error("Este ambiente não possui suporte para conexão HTTPS com o Firebase.");
+  const originalPlan = String(currentPlanName || "").trim();
+  const editedPlan = String(newPlanName || "").trim().replace(/\s+/g, " ");
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(paymentDate)) ? String(paymentDate) : isoDate(paymentDate);
+  const valueKey = String(paymentKey || "");
+  const nameKey = treasuryPlanNameKey(valueKey);
+  if (!isEditableAssistancePlan(originalPlan)) throw new Error("Somente pagamentos de CX Assistência podem ter o plano editado.");
+  if (!editedPlan) throw new Error("Informe o nome do plano.");
+  if (editedPlan.length > 80) throw new Error("O nome do plano deve ter no máximo 80 caracteres.");
+  if (!date) throw new Error("A data do pagamento é inválida.");
+  if (!nameKey) throw new Error("O pagamento selecionado é inválido.");
+  const plan = firebaseKey(originalPlan);
+  const bank = firebaseKey(sourceBank);
+
+  const authToken = process.env.FIREBASE_AUTH_TOKEN?.trim();
+  const readQuery = new URLSearchParams();
+  if (authToken) readQuery.set("auth", authToken);
+  const writeQuery = new URLSearchParams({ print: "silent" });
+  if (authToken) writeQuery.set("auth", authToken);
+  const baseUrl = String(databaseUrl).replace(/\/+$/, "");
+  const rootUrl = `${baseUrl}/${TREASURY_PATH}.json`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  try {
+    const readResponse = await firebaseRequest(`${rootUrl}${readQuery.size ? `?${readQuery}` : ""}`, {
+      method: "GET",
+      signal: controller.signal,
+    }, fetchImpl);
+    const detail = String(await readResponse.text());
+    if (!readResponse.ok) {
+      throw new Error(`Firebase respondeu com HTTP ${readResponse.status}${detail ? `: ${detail.slice(0, 500)}` : ""}`);
+    }
+    const data = detail ? JSON.parse(detail) : null;
+    const bankNode = data?.[plan]?.[date]?.[bank];
+    if (!bankNode || !Number.isFinite(Number(bankNode[valueKey]))) {
+      throw new Error("O pagamento não foi encontrado no Firebase. Atualize a Tesouraria e tente novamente.");
+    }
+
+    const paymentPath = `${plan}/${date}/${bank}`;
+    const patch = { [`${paymentPath}/${nameKey}`]: editedPlan };
+    const writeResponse = await firebaseRequest(`${rootUrl}?${writeQuery}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+      body: JSON.stringify(patch),
+      signal: controller.signal,
+    }, fetchImpl);
+    if (!writeResponse.ok) {
+      const writeDetail = String(await writeResponse.text()).slice(0, 500);
+      throw new Error(`Firebase respondeu com HTTP ${writeResponse.status}${writeDetail ? `: ${writeDetail}` : ""}`);
+    }
+    return {
+      saved: true,
+      planName: editedPlan,
+      originalPlanName: originalPlan,
+      paymentDate: date,
+      sourceBank,
+      paymentKey: valueKey,
+      environment: FIREBASE_ENVIRONMENT,
+    };
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error("O Firebase não respondeu dentro do tempo limite.");
+    if (error instanceof SyntaxError) throw new Error("O Firebase retornou dados inválidos para a Tesouraria.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function loadTreasuryPayments({ fetchImpl = globalThis.fetch, databaseUrl = FIREBASE_DATABASE_URL } = {}) {
@@ -257,12 +390,17 @@ module.exports = {
   FIREBASE_DATABASE_URL,
   FIREBASE_ENVIRONMENT,
   TREASURY_PATH,
+  buildBankCleanupPatch,
   buildTreasuryPatch,
   checkTreasuryFirebase,
   firebaseKey,
+  firebaseRequest,
+  isEditableAssistancePlan,
   isoDate,
   loadTreasuryPayments,
   parseTreasuryData,
   reaisNumber,
   saveTreasuryPayments,
+  treasuryPlanNameKey,
+  updateTreasuryPaymentPlan,
 };
