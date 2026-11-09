@@ -81,15 +81,6 @@ function reaisNumber(value = "") {
   return Number.isFinite(number) ? Math.round(number * 100) / 100 : null;
 }
 
-function isEditableAssistancePlan(value = "") {
-  const normalized = String(value)
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLocaleLowerCase("pt-BR");
-  return /^(?:cx|caixa)(?:\s+de)?\s+assist/.test(normalized);
-}
-
 function treasuryPlanNameKey(paymentKey = "") {
   const match = String(paymentKey).match(/^valorExtrato(\d*)$/);
   return match ? `nomePlano${match[1]}` : "";
@@ -263,7 +254,7 @@ async function updateTreasuryPaymentPlan({
   const date = /^\d{4}-\d{2}-\d{2}$/.test(String(paymentDate)) ? String(paymentDate) : isoDate(paymentDate);
   const valueKey = String(paymentKey || "");
   const nameKey = treasuryPlanNameKey(valueKey);
-  if (!isEditableAssistancePlan(originalPlan)) throw new Error("Somente pagamentos de CX Assistência podem ter o plano editado.");
+  if (!originalPlan) throw new Error("O plano original do pagamento não foi informado.");
   if (!editedPlan) throw new Error("Informe o nome do plano.");
   if (editedPlan.length > 80) throw new Error("O nome do plano deve ter no máximo 80 caracteres.");
   if (!date) throw new Error("A data do pagamento é inválida.");
@@ -395,7 +386,6 @@ module.exports = {
   checkTreasuryFirebase,
   firebaseKey,
   firebaseRequest,
-  isEditableAssistancePlan,
   isoDate,
   loadTreasuryPayments,
   parseTreasuryData,

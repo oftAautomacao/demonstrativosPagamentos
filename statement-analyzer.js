@@ -20,7 +20,7 @@ const PLAN_CATALOG = [
   { name: "Cassi", aliases: ["Cassi", "Caixa de Assistência dos Funcionários do Banco do Brasil", "Caixa Assistência Funcionários BB"] },
   { name: "Caurj", aliases: ["Caurj", "Caixa de Assistência Universitária do Rio de Janeiro", "Caixa Assistencial Universitária do Rio de Janeiro"] },
   { name: "Care Plus", aliases: ["Care Plus", "Careplus", "Care Plus Medicina Assistencial"] },
-  { name: "Fio Saúde", aliases: ["Fio Saúde", "Fiosaúde", "Caixa de Assistência Oswaldo Cruz", "Caixa Assistência Oswaldo Cruz Fiosaúde"] },
+  { name: "Fio Saúde", aliases: ["Fio Saúde", "Fio Saude", "FioSaude", "Fiosaúde", "Caixa de Assistência Oswaldo Cruz", "Caixa Assistência Oswaldo Cruz Fiosaúde"] },
   { name: "Fundação Itaú", aliases: ["Fundação Itaú", "Fundação Saúde Itaú", "Fundação Itaú Unibanco", "Fundação Itaúsa"] },
   { name: "Geap", aliases: ["Geap", "Geap Saúde", "Geap Autogestão em Saúde", "Fundação de Seguridade Social Geap"] },
   { name: "Intermédica", aliases: ["Intermédica", "NotreDame Intermédica", "Notre Dame Intermédica", "Hapvida NotreDame Intermédica", "Hapvida NDI"] },

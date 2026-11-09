@@ -6,7 +6,6 @@ const {
   checkTreasuryFirebase,
   FIREBASE_DATABASE_URL,
   FIREBASE_ENVIRONMENT,
-  isEditableAssistancePlan,
   loadTreasuryPayments,
   parseTreasuryData,
   saveTreasuryPayments,
@@ -195,7 +194,7 @@ test("ordena a Tesouraria alfabeticamente pelo nome exibido do plano", () => {
   assert.deepEqual(payments.map((payment) => payment.planName), ["Amil", "Cassi", "Sulamerica"]);
 });
 
-test("edita somente o nome associado ao pagamento de CX Assistência", async () => {
+test("edita o nome associado a um pagamento sem alterar seus demais dados", async () => {
   const requests = [];
   const result = await updateTreasuryPaymentPlan({
     currentPlanName: "CX Assistência",
@@ -229,18 +228,37 @@ test("edita somente o nome associado ao pagamento de CX Assistência", async () 
   assert.equal(result.originalPlanName, "CX Assistência");
 });
 
-test("bloqueia edição para planos que não sejam caixas de assistência", async () => {
-  assert.equal(isEditableAssistancePlan("CX Assistência"), true);
-  assert.equal(isEditableAssistancePlan("Caixa Assistencial"), true);
-  assert.equal(isEditableAssistancePlan("Cassi"), false);
+test("permite editar o nome de qualquer plano", async () => {
   assert.equal(treasuryPlanNameKey("valorExtrato2"), "nomePlano2");
-  await assert.rejects(() => updateTreasuryPaymentPlan({
+  const requests = [];
+  const result = await updateTreasuryPaymentPlan({
     currentPlanName: "Cassi",
-    newPlanName: "Amil",
+    newPlanName: "Cassi Saúde",
     paymentDate: "23/10/2026",
     sourceBank: "Bradesco",
     paymentKey: "valorExtrato",
-  }, { fetchImpl: async () => ({ ok: true }) }), /Somente pagamentos de CX Assistência/);
+  }, {
+    databaseUrl: "https://exemplo.firebaseio.com/",
+    fetchImpl: async (url, options) => {
+      requests.push({ url, options });
+      if (options.method === "GET") {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            Cassi: {
+              "2026-10-23": { Bradesco: { valorExtrato: 500 } },
+            },
+          }),
+        };
+      }
+      return { ok: true, status: 204, text: async () => "" };
+    },
+  });
+  assert.equal(result.planName, "Cassi Saúde");
+  assert.deepEqual(JSON.parse(requests[1].options.body), {
+    "Cassi/2026-10-23/Bradesco/nomePlano": "Cassi Saúde",
+  });
 });
 
 test("mantém a Tesouraria configurada exclusivamente no Firebase de teste", () => {

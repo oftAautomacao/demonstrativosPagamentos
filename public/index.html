@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="Painel local para consulta de demonstrativos de pagamento." />
     <title>Demonstrativos de pagamento</title>
-    <link rel="stylesheet" href="/styles.css?v=20261019a" />
+    <link rel="stylesheet" href="/styles.css?v=20261109a" />
   </head>
   <body>
     <div class="app-shell">
@@ -180,8 +180,8 @@
                     <tr>
                       <th>Convênios</th>
                       <th>Executar importação</th>
+                      <th>Data download<br>demonstrativo</th>
                       <th>Agendamento Importação</th>
-                      <th>Data Download Demonstrativo</th>
                       <th><span class="visually-hidden">Ações</span></th>
                     </tr>
                   </thead>
@@ -265,7 +265,7 @@
                     </span>
                   </div>
                   <div class="statement-plan-list" id="statement-plan-list"></div>
-                  <p class="statement-result-note">Os pagamentos exibidos foram carregados do Firebase de teste. A coluna Creditado identifica o banco de origem de cada recebimento.</p>
+                  <p class="statement-result-note">Os pagamentos exibidos foram carregados do Firebase de teste. Amarelo indica Demonstrado ASA; verde-escuro indica Quitado ASA. Um pagamento só pode ser quitado depois de demonstrado.</p>
                 </section>
               </div>
             </section>
@@ -288,6 +288,13 @@
                 <div>
                   <small>Mês/ano processado</small>
                   <strong id="report-processed-period">—</strong>
+                </div>
+                <div class="report-project-location">
+                  <small>Local projeto</small>
+                  <button id="report-project-folder" type="button" title="Abrir a pasta desta competência no Explorador de Arquivos">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3zM3 9h18" /></svg>
+                    <span>Abrir pasta</span>
+                  </button>
                 </div>
               </div>
             </article>
@@ -479,6 +486,7 @@
 
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
     <script src="/table-sort.js?v=20261019a" defer></script>
-    <script src="/app.js?v=20261103c" defer></script>
+    <script src="/config-schedule.js?v=20261109a" defer></script>
+    <script src="/app.js?v=20261109a" defer></script>
   </body>
 </html>

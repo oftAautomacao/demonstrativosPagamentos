@@ -1,5 +1,5 @@
 @echo off
-title Demonstrativos de Pagamento
+title Demonstrativos de Pagamento - MANTENHA ESTA JANELA ABERTA
 cd /d "%~dp0"
 
 where node >nul 2>nul
@@ -11,6 +11,7 @@ if errorlevel 1 (
 )
 
 echo Iniciando o painel de demonstrativos...
+echo IMPORTANTE: mantenha esta janela aberta enquanto estiver usando o painel.
 where python >nul 2>nul
 if errorlevel 1 (
   echo Aviso: Python nao foi encontrado. A aba de Ajuste TUSS nao estara disponivel.

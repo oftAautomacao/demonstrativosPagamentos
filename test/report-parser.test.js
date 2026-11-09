@@ -175,6 +175,14 @@ test("mantém Caberj e Caberj Integral como convênios distintos", () => {
   assert.equal(integral.periodYear, 2026);
 });
 
+test("exibe a pasta FioSaude com o nome visual Fio Saúde", () => {
+  const text = `RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - FIOSAUDE\nMes/ano processado: OUTUBRO/2026`;
+  const report = parseReport(text, "C:\\Base\\FioSaude\\OUTUBRO_2026\\relatorio_FioSaude.txt", "C:\\Base");
+  assert.equal(report.agreement, "Fio Saúde");
+  assert.equal(report.periodMonth, 10);
+  assert.equal(report.periodYear, 2026);
+});
+
 test("interpreta DESCRICAO PAGAMENTO separada por barras e varias datas", () => {
   const text = `
 RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - SULAMERICA

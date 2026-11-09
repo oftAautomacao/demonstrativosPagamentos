@@ -10,15 +10,21 @@ const { readImportConfig, writeImportConfig } = require("./control-import");
 const { readControlPayments } = require("./control-payments");
 const { readPlanCredentials, writePlanCredentials } = require("./plan-credentials");
 const { readReadonlyReports } = require("./readonly-reports");
+const { openProjectFolder, openRelativeProjectFolder } = require("./project-folder");
+const { canonicalPlanName, normalizedPlanKey } = require("./plan-name");
 const { analyzeUploadedStatement, buildPlanCandidates } = require("./statement-analyzer");
 const {
   checkTreasuryFirebase,
-  firebaseKey,
   loadTreasuryPayments,
   saveTreasuryPayments,
   updateTreasuryPaymentPlan,
 } = require("./treasury-firebase");
 const { loadConfigDownloadDates, saveConfigDownloadDate } = require("./config-draft-firebase");
+const {
+  loadTreasuryAsaStatuses,
+  mergeTreasuryAsaStatuses,
+  saveTreasuryAsaStatus,
+} = require("./treasury-asa-firebase");
 
 const PORT = Number(process.env.PORT) || 4173;
 const HOST = process.env.HOST || "127.0.0.1";
@@ -27,6 +33,40 @@ const LOCAL_REPORTS_CONFIG = path.join(__dirname, ".reports-root");
 const REPORTS_ROOT = getReportsRoot();
 const CONTROL_REPORT_PATH = path.join(REPORTS_ROOT, "Relatorio Controle.txt");
 const SHOULD_OPEN = process.argv.includes("--open");
+
+function configWithDiscoveredPlans(config) {
+  const rows = (config.rows || []).map((row) => ({
+    ...row,
+    agreement: canonicalPlanName(row.agreement),
+  }));
+  const existing = new Set(rows.map((row) => normalizedPlanKey(row.agreement)));
+  const payments = readControlPayments(CONTROL_REPORT_PATH).rows || [];
+  const reports = loadReports(REPORTS_ROOT).reports || [];
+  for (const report of reports) {
+    const agreement = canonicalPlanName(report.agreement);
+    const key = normalizedPlanKey(agreement);
+    if (!agreement || existing.has(key)) continue;
+    const payment = payments.find((row) => (
+      normalizedPlanKey(row.agreement) === key
+      && /^\d{2}\/\d{2}\/\d{4}$/.test(String(row.paymentDate || ""))
+    ));
+    if (!payment) continue;
+    rows.push({
+      agreement,
+      execute: "Nao",
+      schedule: payment.paymentDate,
+    });
+    existing.add(key);
+  }
+  rows.sort((left, right) => left.agreement.localeCompare(right.agreement, "pt-BR", { sensitivity: "base" }));
+  return { ...config, rows };
+}
+
+function configDraftDate(dates, agreement) {
+  const key = normalizedPlanKey(agreement);
+  const match = Object.entries(dates || {}).find(([name]) => normalizedPlanKey(name) === key);
+  return match?.[1] || "";
+}
 
 function getReportsRoot() {
   if (process.env.REPORTS_ROOT?.trim()) {
@@ -133,6 +173,26 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
+  if (request.method === "POST" && requestUrl.pathname === "/api/project-folder/open") {
+    try {
+      const body = await readJsonBody(request);
+      if (body.relativeFolder) {
+        sendJson(response, 200, await openRelativeProjectFolder(body.relativeFolder, REPORTS_ROOT));
+      } else {
+        // Compatibilidade com páginas antigas ainda abertas no navegador.
+        const report = findReport(body.reportId);
+        if (!report) throw new Error("O demonstrativo selecionado não foi encontrado.");
+        sendJson(response, 200, await openProjectFolder(report, REPORTS_ROOT));
+      }
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível abrir o local do projeto.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
   if (request.method === "POST" && requestUrl.pathname === "/api/payment-statement/analyze") {
     try {
       const body = await readJsonBody(request, 17 * 1024 * 1024);
@@ -173,10 +233,36 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && requestUrl.pathname === "/api/treasury/payments") {
     try {
-      sendJson(response, 200, await loadTreasuryPayments());
+      const result = await loadTreasuryPayments();
+      try {
+        const asaControl = await loadTreasuryAsaStatuses();
+        result.payments = mergeTreasuryAsaStatuses(result.payments, asaControl.statuses);
+        result.asaControl = {
+          count: asaControl.count,
+          environment: asaControl.environment,
+          path: asaControl.path,
+        };
+      } catch (asaControlError) {
+        result.payments = mergeTreasuryAsaStatuses(result.payments, []);
+        result.asaControlError = asaControlError.message;
+      }
+      sendJson(response, 200, result);
     } catch (error) {
       sendJson(response, 503, {
         error: "Não foi possível carregar os pagamentos salvos na Tesouraria.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/treasury/asa-status") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, await saveTreasuryAsaStatus(body));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível salvar o controle ASA deste pagamento.",
         detail: error.message,
       });
     }
@@ -236,12 +322,12 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && requestUrl.pathname === "/api/import-config") {
     try {
-      const config = readImportConfig(CONTROL_REPORT_PATH);
+      const config = configWithDiscoveredPlans(readImportConfig(CONTROL_REPORT_PATH));
       try {
         const draft = await loadConfigDownloadDates();
         config.rows = config.rows.map((row) => ({
           ...row,
-          downloadDate: draft.dates[firebaseKey(row.agreement)] || "",
+          downloadDate: configDraftDate(draft.dates, row.agreement),
         }));
         config.draft = {
           environment: draft.environment,
@@ -290,7 +376,9 @@ const server = http.createServer(async (request, response) => {
 
   if (request.method === "GET" && requestUrl.pathname === "/api/control-payments") {
     try {
-      sendJson(response, 200, readControlPayments(CONTROL_REPORT_PATH));
+      const control = readControlPayments(CONTROL_REPORT_PATH);
+      control.rows = control.rows.map((row) => ({ ...row, agreement: canonicalPlanName(row.agreement) }));
+      sendJson(response, 200, control);
     } catch (error) {
       sendJson(response, 500, {
         error: "Nao foi possivel ler os pagamentos e importacoes.",

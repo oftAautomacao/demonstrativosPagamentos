@@ -38,6 +38,8 @@ const state = {
   planCredentialRevisions: new Map(),
   planCredentialSaving: new Set(),
   desiredDateSaveTimer: null,
+  desiredMonth: 0,
+  desiredYear: 0,
   selectedMonth: 0,
   selectedYear: 0,
   importConfig: [],
@@ -51,6 +53,7 @@ const state = {
   treasuryLoading: false,
   treasuryRows: [],
   treasuryPlanSaving: false,
+  treasuryAsaSaving: new Set(),
   readonlyDocuments: { medical: [], import: [] },
   readonlyLoaded: { medical: false, import: false },
   readonlySelection: {
@@ -63,7 +66,7 @@ const ids = [
   "loading-state", "empty-state",
   "error-state", "error-message", "error-retry", "report-view", "period-previous", "period-label", "period-next",
   "plan-select", "agreement",
-  "report-document-title", "report-payment-date", "report-generated-date", "report-processed-period",
+  "report-document-title", "report-payment-date", "report-generated-date", "report-processed-period", "report-project-folder",
   "description-payment-columns", "description-payment-head", "description-payment-body", "description-payment-foot",
   "raw-report-text", "toast", "tuss-refresh", "tuss-loading", "tuss-unavailable",
   "tuss-unavailable-title", "tuss-unavailable-message", "tuss-content", "tuss-file-count",
@@ -212,6 +215,16 @@ function normalizedText(value = "") {
   return String(value).normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
 }
 
+function canonicalPlanDisplayName(value = "") {
+  const name = String(value).trim().replace(/\s+/g, " ");
+  const compact = normalizedText(name).replace(/\s+/g, "");
+  if (compact === "caberjintegral") return "Caberj Integral";
+  if (compact === "fiosaude") return "Fio Saúde";
+  if (compact === "itau") return "Itaú";
+  if (compact === "portoseguro") return "Porto Seguro";
+  return name;
+}
+
 function descriptionCellClass(column) {
   const normalized = normalizedText(column);
   const classes = [];
@@ -273,6 +286,11 @@ function renderPaymentDescription(report) {
   elements["report-payment-date"].textContent = report.paymentDateText || report.paymentDates?.join(" · ") || "Não informado";
   elements["report-generated-date"].textContent = report.generatedAt || "Não informado";
   elements["report-processed-period"].textContent = report.processedPeriod || (report.periodMonthName && report.periodYear ? `${report.periodMonthName.toLocaleUpperCase("pt-BR")}/${report.periodYear}` : "Não informado");
+  const projectFolder = String(report.filePath || "").replace(/[\\/][^\\/]+$/, "");
+  elements["report-project-folder"].disabled = !report.id;
+  elements["report-project-folder"].title = projectFolder
+    ? `Abrir ${projectFolder}`
+    : "Abrir a pasta desta competência no Explorador de Arquivos";
 
   const description = report.paymentDescription || { columns: [], rows: [], total: [] };
   const descriptionTable = document.querySelector(".description-payment-table");
@@ -295,19 +313,12 @@ function renderPaymentDescription(report) {
   tableScroll.classList.toggle("fit-screen-scroll", fitScreen);
 }
 
-function guideCount(group) {
-  const distinctGuideNumbers = new Set(
-    (group.rows || [])
-      .map((row) => String(row?.[0] || "").trim())
-      .filter((value) => /^\d+$/.test(value)),
-  );
-  if (distinctGuideNumbers.size) return distinctGuideNumbers.size;
-
-  const declaredCount = (group.total || [])
-    .join(" ")
-    .match(/(\d[\d.]*)\s+guia(?:s|\(s\))?/i);
-  if (declaredCount) return Number.parseInt(declaredCount[1].replace(/\./g, ""), 10);
-  return Number(group.guideCount || 0);
+function guidePatientCount(group) {
+  // Cada linha interpretada representa uma referência de paciente. Cabeçalho,
+  // separadores e TOTAL já são removidos pelo parser antes de chegar à tela.
+  return (group.rows || []).filter((row) => (
+    Array.isArray(row) && row.some((value) => String(value || "").trim())
+  )).length;
 }
 
 function renderGuideInformation(report) {
@@ -317,7 +328,7 @@ function renderGuideInformation(report) {
       <article class="guide-group">
         <header class="guide-group-heading">
           <span><small>Data de pagamento</small><strong>${escapeHtml(group.paymentDate || "Não informada")}</strong></span>
-          <span class="guide-count">${guideCount(group).toLocaleString("pt-BR")} guia(s)</span>
+          <span class="guide-count">${guidePatientCount(group).toLocaleString("pt-BR")} paciente(s)</span>
         </header>
         <div class="table-scroll">
           <table class="guide-table${group.columns.length > 10 ? " extra-wide" : ""}">
@@ -452,9 +463,9 @@ function showTussTableMessage(message, isError = false) {
 
 function availablePlanSettingsNames() {
   const names = new Set();
-  for (const report of state.data?.reports || []) names.add(report.agreement);
-  for (const table of state.tussTables) names.add(table.planName);
-  for (const plan of state.planCredentials) names.add(plan.planName);
+  for (const report of state.data?.reports || []) names.add(canonicalPlanDisplayName(report.agreement));
+  for (const table of state.tussTables) names.add(canonicalPlanDisplayName(table.planName));
+  for (const plan of state.planCredentials) names.add(canonicalPlanDisplayName(plan.planName));
   return [...names].filter(Boolean).sort((left, right) => left.localeCompare(right, "pt-BR"));
 }
 
@@ -469,9 +480,11 @@ function updatePlanHeading() {
 
 function renderPlanSettingsSelect() {
   const plans = availablePlanSettingsNames();
+  state.selectedPlanName = canonicalPlanDisplayName(state.selectedPlanName);
   if (!plans.includes(state.selectedPlanName)) {
-    state.selectedPlanName = activeReport()?.agreement && plans.includes(activeReport().agreement)
-      ? activeReport().agreement
+    const activePlanName = canonicalPlanDisplayName(activeReport()?.agreement);
+    state.selectedPlanName = activePlanName && plans.includes(activePlanName)
+      ? activePlanName
       : plans[0] || "";
   }
   elements["plan-settings-select"].innerHTML = plans.length
@@ -484,7 +497,7 @@ function renderPlanSettingsSelect() {
 
 function renderTussTables() {
   renderPlanSettingsSelect();
-  const tables = state.tussTables.filter((table) => table.planName === state.selectedPlanName);
+  const tables = state.tussTables.filter((table) => canonicalPlanDisplayName(table.planName) === state.selectedPlanName);
   if (!state.tussTables.length) {
     elements["tuss-table-list"].innerHTML = "";
     elements["tuss-table-list"].classList.add("hidden");
@@ -502,7 +515,7 @@ function renderTussTables() {
   elements["tuss-table-list"].innerHTML = tables.map((table) => `
     <article class="tuss-table-card" data-table-id="${escapeHtml(table.id)}">
       <header class="tuss-table-card-header">
-        <span class="tuss-table-plan"><span class="config-row-dot" aria-hidden="true"></span><span><strong>${escapeHtml(table.planName)}</strong><small>${escapeHtml(table.fileName)} · ${escapeHtml(table.sheetName)}</small></span></span>
+        <span class="tuss-table-plan"><span class="config-row-dot" aria-hidden="true"></span><span><strong>${escapeHtml(canonicalPlanDisplayName(table.planName))}</strong><small>${escapeHtml(table.fileName)} · ${escapeHtml(table.sheetName)}</small></span></span>
         <span class="tuss-table-card-actions">
           <button class="tuss-table-add-row" type="button" data-tuss-add title="Adicionar linha à tabela">
             <span aria-hidden="true">+</span> Adicionar linha
@@ -643,7 +656,7 @@ function showPlanCredentialsMessage(message, isError = false) {
 
 function renderPlanCredentials() {
   renderPlanSettingsSelect();
-  const plans = state.planCredentials.filter((plan) => plan.planName === state.selectedPlanName);
+  const plans = state.planCredentials.filter((plan) => canonicalPlanDisplayName(plan.planName) === state.selectedPlanName);
   if (!state.planCredentials.length) {
     elements["plan-credentials-list"].innerHTML = "";
     elements["plan-credentials-list"].classList.add("hidden");
@@ -661,7 +674,7 @@ function renderPlanCredentials() {
   elements["plan-credentials-list"].innerHTML = plans.map((plan) => `
     <article class="credential-card" data-credential-id="${escapeHtml(plan.id)}">
       <header class="tuss-table-card-header">
-        <span class="tuss-table-plan"><span class="config-row-dot" aria-hidden="true"></span><span><strong>${escapeHtml(plan.planName)}</strong><small>${escapeHtml(plan.fileName)}</small></span></span>
+        <span class="tuss-table-plan"><span class="config-row-dot" aria-hidden="true"></span><span><strong>${escapeHtml(canonicalPlanDisplayName(plan.planName))}</strong><small>${escapeHtml(plan.fileName)}</small></span></span>
         <button class="tuss-table-save-button credential-save-button ${state.planCredentialDirty.has(plan.id) ? "" : "hidden"}" type="button" data-credential-save>Salvar</button>
       </header>
       <div class="credential-fields">
@@ -1201,6 +1214,13 @@ async function readApiResponse(response) {
   return data;
 }
 
+function friendlyApiError(error) {
+  const message = String(error?.message || error || "Erro desconhecido");
+  return /failed to fetch|fetch failed|networkerror|erro de rede/i.test(message)
+    ? "O servidor do painel não está ativo. Abra o arquivo Iniciar Painel.bat e mantenha a janela do servidor aberta."
+    : message;
+}
+
 function showStatementMessage(message = "") {
   elements["statement-message"].textContent = message;
   elements["statement-message"].classList.toggle("hidden", !message);
@@ -1236,17 +1256,13 @@ function treasuryCreditedCell(sourceBank = "") {
 }
 
 function isEditableTreasuryPlan(row = {}) {
-  const normalized = String(row.originalPlanName || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLocaleLowerCase("pt-BR");
-  return /^(?:cx|caixa)(?:\s+de)?\s+assist/.test(normalized) && /^valorExtrato\d*$/.test(row.paymentKey || "");
+  return Boolean(String(row.originalPlanName || row.planName || "").trim())
+    && /^valorExtrato\d*$/.test(row.paymentKey || "");
 }
 
 function treasuryPlanCell(row, index) {
   const editButton = isEditableTreasuryPlan(row)
-    ? `<button class="treasury-plan-edit" type="button" data-treasury-edit="${index}" title="Editar plano identificado como CX Assistência" aria-label="Editar nome do plano">
+    ? `<button class="treasury-plan-edit" type="button" data-treasury-edit="${index}" title="Editar nome deste plano" aria-label="Editar nome do plano">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Zm9.9-9.9 3.2 3.2M14.8 5.2l1.4-1.4a1.6 1.6 0 0 1 2.3 0l1.7 1.7a1.6 1.6 0 0 1 0 2.3l-1.4 1.4" /></svg>
       </button>`
     : "";
@@ -1259,6 +1275,90 @@ function treasuryPlanEditor(row, index) {
     <button class="is-save" type="button" data-treasury-save="${index}" title="Salvar nome" aria-label="Salvar nome do plano">✓</button>
     <button type="button" data-treasury-cancel="${index}" title="Cancelar" aria-label="Cancelar edição">×</button>
   </div>`;
+}
+
+function treasuryAsaCheckbox(row, index, field) {
+  const demonstrated = row.demonstradoASA === true;
+  const settled = demonstrated && row.quitadoASA === true;
+  const isDemonstrated = field === "demonstradoASA";
+  const checked = isDemonstrated ? demonstrated : settled;
+  const disabled = !isDemonstrated && !demonstrated;
+  const label = isDemonstrated ? "Demonstrado ASA" : "Quitado ASA";
+  return `<label class="treasury-asa-check" title="${label}">
+    <input type="checkbox" data-treasury-asa="${field}" data-treasury-row-index="${index}" ${checked ? "checked" : ""} ${disabled ? "disabled" : ""} aria-label="${label} para ${escapeHtml(row.planName)}, pagamento de ${escapeHtml(row.paymentDate || "data não informada")}" />
+    <span aria-hidden="true"></span>
+  </label>`;
+}
+
+function applyTreasuryAsaRowState(index, { saving = false } = {}) {
+  const row = state.treasuryRows[index];
+  const tableRow = elements["statement-plan-list"].querySelector(`[data-treasury-row="${index}"]`);
+  if (!row || !tableRow) return;
+  row.demonstradoASA = row.demonstradoASA === true;
+  row.quitadoASA = row.demonstradoASA && row.quitadoASA === true;
+  tableRow.classList.toggle("is-asa-demonstrated", row.demonstradoASA && !row.quitadoASA);
+  tableRow.classList.toggle("is-asa-settled", row.quitadoASA);
+  const demonstratedInput = tableRow.querySelector('[data-treasury-asa="demonstradoASA"]');
+  const settledInput = tableRow.querySelector('[data-treasury-asa="quitadoASA"]');
+  if (demonstratedInput) {
+    demonstratedInput.checked = row.demonstradoASA;
+    demonstratedInput.disabled = saving;
+  }
+  if (settledInput) {
+    settledInput.checked = row.quitadoASA;
+    settledInput.disabled = saving || !row.demonstradoASA;
+  }
+  tableRow.classList.toggle("is-asa-saving", saving);
+}
+
+async function saveTreasuryAsaStatus(index, field, checked) {
+  if (state.treasuryAsaSaving.has(index)) return;
+  const row = state.treasuryRows[index];
+  if (!row || !["demonstradoASA", "quitadoASA"].includes(field)) return;
+  const previous = {
+    demonstradoASA: row.demonstradoASA === true,
+    quitadoASA: row.demonstradoASA === true && row.quitadoASA === true,
+  };
+  if (field === "demonstradoASA") {
+    row.demonstradoASA = checked;
+    if (!checked) row.quitadoASA = false;
+  } else {
+    if (checked && !row.demonstradoASA) {
+      showToast("Demonstre o pagamento no ASA antes de quitá-lo.");
+      applyTreasuryAsaRowState(index);
+      return;
+    }
+    row.quitadoASA = checked;
+  }
+
+  state.treasuryAsaSaving.add(index);
+  applyTreasuryAsaRowState(index, { saving: true });
+  try {
+    const response = await fetch("/api/treasury/asa-status", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        originalPlanName: row.originalPlanName || row.planName,
+        paymentDate: row.paymentDate,
+        sourceBank: row.sourceBank,
+        paymentKey: row.paymentKey,
+        demonstradoASA: row.demonstradoASA,
+        quitadoASA: row.quitadoASA,
+      }),
+    });
+    await readApiResponse(response);
+    const stage = row.quitadoASA ? "Quitado ASA" : row.demonstradoASA ? "Demonstrado ASA" : "Controle ASA removido";
+    elements["statement-save-status"].textContent = `${stage} salvo no Firebase de teste`;
+    elements["statement-save-status"].classList.remove("is-error");
+  } catch (error) {
+    row.demonstradoASA = previous.demonstradoASA;
+    row.quitadoASA = previous.quitadoASA;
+    elements["statement-save-status"].textContent = error.message;
+    elements["statement-save-status"].classList.add("is-error");
+  } finally {
+    state.treasuryAsaSaving.delete(index);
+    applyTreasuryAsaRowState(index);
+  }
 }
 
 function renderStatementResult(data) {
@@ -1289,18 +1389,21 @@ function renderStatementResult(data) {
     : persistence.saved
       ? `${Number(persistence.count || 0).toLocaleString("pt-BR")} pagamento(s) salvo(s) no Firebase de teste`
       : `Não foi possível salvar no Firebase de teste: ${persistence.error || "o servidor não retornou o motivo da falha"}`;
-  elements["statement-save-status"].classList.toggle("is-error", !hasPersistenceResult || !persistence.saved);
-  if (data.loadedFromFirebase) elements["statement-save-status"].classList.remove("is-error");
+  elements["statement-save-status"].classList.toggle("is-error", data.loadedFromFirebase
+    ? data.statusIsError === true
+    : !hasPersistenceResult || !persistence.saved);
   elements["statement-plan-list"].innerHTML = rows.length
     ? `<div class="table-scroll treasury-table-scroll">
         <table class="treasury-table">
-          <thead><tr><th aria-sort="ascending">Plano</th><th>Data de pagamento</th><th>Creditado</th><th>Valor pago</th></tr></thead>
+          <thead><tr><th aria-sort="ascending">Plano</th><th>Data de pagamento</th><th>Valor pago</th><th>Creditado</th><th class="treasury-asa-heading"><span>ASA</span><strong>Demonstrado</strong></th><th class="treasury-asa-heading"><span>ASA</span><strong>Quitado</strong></th></tr></thead>
           <tbody>${rows.map((row, index) => `
-            <tr title="${escapeHtml(row.evidence || "")}">
+            <tr data-treasury-row="${index}" class="${row.quitadoASA ? "is-asa-settled" : row.demonstradoASA ? "is-asa-demonstrated" : ""}" title="${escapeHtml(row.evidence || "")}">
               <td data-treasury-plan-cell="${index}">${treasuryPlanCell(row, index)}</td>
               <td>${escapeHtml(row.paymentDate || "—")}</td>
-              <td>${treasuryCreditedCell(row.sourceBank)}</td>
               <td class="number">${escapeHtml(row.paymentAmount ? `R$ ${row.paymentAmount}` : "—")}</td>
+              <td>${treasuryCreditedCell(row.sourceBank)}</td>
+              <td class="treasury-asa-cell">${treasuryAsaCheckbox(row, index, "demonstradoASA")}</td>
+              <td class="treasury-asa-cell">${treasuryAsaCheckbox(row, index, "quitadoASA")}</td>
             </tr>
           `).join("")}</tbody>
         </table>
@@ -1325,6 +1428,8 @@ function savedPaymentsAsMatches(payments = []) {
       sourceBank: payment.sourceBank,
       originalPlanName: payment.originalPlanName,
       paymentKey: payment.paymentKey,
+      demonstradoASA: payment.demonstradoASA === true,
+      quitadoASA: payment.demonstradoASA === true && payment.quitadoASA === true,
       evidence: `Origem: ${payment.sourceBank || "Banco não identificado"}`,
     });
   }
@@ -1340,7 +1445,10 @@ async function loadTreasuryPayments({ statusText = "" } = {}) {
     renderStatementResult({
       matches: savedPaymentsAsMatches(data.payments),
       loadedFromFirebase: true,
-      statusText,
+      statusText: data.asaControlError
+        ? `Pagamentos carregados, mas o controle ASA não pôde ser consultado: ${data.asaControlError}`
+        : statusText,
+      statusIsError: Boolean(data.asaControlError),
       persistence: { saved: true, count: data.count },
     });
   } catch (error) {
@@ -1404,8 +1512,10 @@ async function saveTreasuryPlanName(index) {
     await loadTreasuryPayments({ statusText: `Plano alterado para ${newPlanName} no Firebase de teste` });
   } catch (error) {
     restoreTreasuryPlanCell(index);
-    elements["statement-save-status"].textContent = error.message;
+    const message = friendlyApiError(error);
+    elements["statement-save-status"].textContent = message;
     elements["statement-save-status"].classList.add("is-error");
+    showToast(message);
   } finally {
     state.treasuryPlanSaving = false;
   }
@@ -1493,8 +1603,15 @@ function renderImportConfig() {
             <option value="Nao" ${row.execute === "Nao" ? "selected" : ""}>Não</option>
           </select>
         </td>
-        <td><input class="config-schedule" type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" data-field="schedule" value="${escapeHtml(row.schedule)}" aria-label="Agendamento da importação da linha ${index + 1}" /></td>
-        <td><input class="config-download-date" type="date" data-field="downloadDate" value="${escapeHtml(row.downloadDate || "")}" aria-label="Data download demonstrativo da linha ${index + 1}" /></td>
+        <td><input class="config-download-date" type="date" data-field="downloadDate" value="${escapeHtml(row.downloadDate || "")}" aria-label="Data download demonstrativo da linha ${index + 1}" aria-readonly="true" readonly /></td>
+        <td>
+          <span class="config-schedule-wrap">
+            <input class="config-schedule" type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" data-field="schedule" value="${escapeHtml(row.schedule)}" aria-label="Agendamento da importação da linha ${index + 1}" aria-readonly="true" readonly />
+            <button class="config-schedule-edit" type="button" data-edit-schedule="${index}" title="Editar agendamento da importação" aria-label="Editar agendamento da importação da linha ${index + 1}">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Zm9.9-9.9 3.2 3.2M14.8 5.2l1.4-1.4a1.6 1.6 0 0 1 2.3 0l1.7 1.7a1.6 1.6 0 0 1 0 2.3l-1.4 1.4" /></svg>
+            </button>
+          </span>
+        </td>
         <td>
           <button class="config-remove-button" type="button" data-remove="${index}" title="Remover convênio" aria-label="Remover convênio da linha ${index + 1}">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>
@@ -1519,9 +1636,14 @@ async function loadImportConfig({ force = false } = {}) {
     const response = await fetch("/api/import-config", { cache: "no-store" });
     const data = await readApiResponse(response);
     state.importConfig = data.rows || [];
+    const automaticRows = applyAutomaticDownloadDates({ onlyEmpty: true });
     state.importConfigLoaded = true;
     state.importConfigDirty = false;
     renderImportConfig();
+    if (automaticRows.length) {
+      scheduleImportConfigSave();
+      automaticRows.forEach((index) => scheduleConfigDownloadDateSave(index, { silent: true }));
+    }
     elements["config-content"].classList.remove("hidden");
     if (data.draftError) {
       showConfigError(`As configurações do TXT foram carregadas, mas as datas de download não puderam ser lidas: ${data.draftError}`);
@@ -1594,7 +1716,7 @@ async function saveImportConfig() {
   }
 }
 
-function scheduleConfigDownloadDateSave(index) {
+function scheduleConfigDownloadDateSave(index, { silent = false } = {}) {
   const row = state.importConfig[index];
   if (!row) return;
   const agreement = String(row.agreement || "").trim();
@@ -1615,15 +1737,46 @@ function scheduleConfigDownloadDateSave(index) {
       });
       const data = await readApiResponse(response);
       showConfigError("");
-      showToast(data.downloadDate
-        ? `Data de download de ${agreement} salva no Firebase de teste`
-        : `Data de download de ${agreement} removida do Firebase de teste`);
+      if (!silent) {
+        showToast(data.downloadDate
+          ? `Data de download de ${agreement} salva no Firebase de teste`
+          : `Data de download de ${agreement} removida do Firebase de teste`);
+      }
     } catch (error) {
       showConfigError(error.message);
     } finally {
       state.configDownloadSaveTimers.delete(timerKey);
     }
   }, 500));
+}
+
+function applyAutomaticDownloadDates({ onlyEmpty = false, indexes = null } = {}) {
+  const allowedIndexes = indexes ? new Set(indexes) : null;
+  const changed = [];
+  state.importConfig.forEach((row, index) => {
+    if (allowedIndexes && !allowedIndexes.has(index)) return;
+    if (onlyEmpty && row.downloadDate) return;
+    const downloadDate = automaticDownloadDate(row.agreement, state.desiredMonth, state.desiredYear);
+    if (!downloadDate || downloadDate === row.downloadDate) return;
+    row.downloadDate = downloadDate;
+    const schedule = nextImportSchedule(downloadDate);
+    if (schedule) row.schedule = schedule;
+    changed.push(index);
+  });
+  return changed;
+}
+
+function updateScheduleFromDownloadDate(index) {
+  const row = state.importConfig[index];
+  if (!row) return;
+  const nextSchedule = nextImportSchedule(row.downloadDate);
+  if (!nextSchedule) return;
+  row.schedule = nextSchedule;
+  const scheduleInput = elements["config-rows"].querySelector(
+    `tr[data-index="${index}"] [data-field="schedule"]`,
+  );
+  if (scheduleInput) scheduleInput.value = nextSchedule;
+  scheduleImportConfigSave();
 }
 
 function controlValue(value) {
@@ -1637,7 +1790,7 @@ function renderControlPayments() {
   elements["control-payments-rows"].innerHTML = rows.length
     ? rows.map((row) => `
       <tr>
-        <td><span class="control-payments-name"><span class="config-row-dot" aria-hidden="true"></span><strong>${escapeHtml(row.agreement)}</strong></span></td>
+        <td><span class="control-payments-name"><span class="config-row-dot" aria-hidden="true"></span><strong>${escapeHtml(canonicalPlanDisplayName(row.agreement))}</strong></span></td>
         <td>${controlValue(row.hadPayment)}</td>
         <td>${controlValue(row.paymentDate)}</td>
         <td>${controlValue(row.imported)}</td>
@@ -1669,6 +1822,8 @@ async function loadControlPayments({ force = false } = {}) {
 }
 
 function fillDesiredDates(selectedMonth, selectedYear) {
+  state.desiredMonth = Number(selectedMonth);
+  state.desiredYear = Number(selectedYear);
   const dates = Array.from({ length: 5 }, (_, index) => {
     const date = new Date(selectedYear, selectedMonth - 1 + index - 2, 1);
     return { month: date.getMonth() + 1, year: date.getFullYear() };
@@ -1706,7 +1861,15 @@ async function saveDesiredDate() {
     });
     const data = await readApiResponse(response);
     fillDesiredDates(data.month, data.year);
-    showToast(`Data Desejada: ${data.value}`);
+    const automaticRows = applyAutomaticDownloadDates();
+    if (automaticRows.length) {
+      renderImportConfig();
+      scheduleImportConfigSave();
+      automaticRows.forEach((index) => scheduleConfigDownloadDateSave(index, { silent: true }));
+    }
+    showToast(automaticRows.length
+      ? `Data Desejada: ${data.value} · datas de download atualizadas`
+      : `Data Desejada: ${data.value}`);
   } catch (error) {
     showToast(error.message);
   } finally {
@@ -1854,6 +2017,7 @@ elements["config-rows"].addEventListener("input", (event) => {
   const index = Number(row.dataset.index);
   state.importConfig[index][field] = event.target.value;
   if (field === "downloadDate") {
+    updateScheduleFromDownloadDate(index);
     scheduleConfigDownloadDateSave(index);
     return;
   }
@@ -1866,12 +2030,42 @@ elements["config-rows"].addEventListener("change", (event) => {
   const index = Number(row.dataset.index);
   state.importConfig[index][field] = event.target.value;
   if (field === "downloadDate") {
+    updateScheduleFromDownloadDate(index);
     scheduleConfigDownloadDateSave(index);
     return;
   }
+  if (field === "agreement") {
+    const automaticRows = applyAutomaticDownloadDates({ indexes: [index] });
+    if (automaticRows.length) {
+      renderImportConfig();
+      scheduleConfigDownloadDateSave(index, { silent: true });
+    }
+  }
   scheduleImportConfigSave();
 });
+elements["config-rows"].addEventListener("keydown", (event) => {
+  if (event.target.dataset.field !== "schedule" || event.target.readOnly || event.key !== "Enter") return;
+  event.preventDefault();
+  event.target.blur();
+});
+elements["config-rows"].addEventListener("focusout", (event) => {
+  if (event.target.dataset.field !== "schedule" || event.target.readOnly) return;
+  event.target.readOnly = true;
+  event.target.setAttribute("aria-readonly", "true");
+  event.target.closest(".config-schedule-wrap")?.classList.remove("is-editing");
+});
 elements["config-rows"].addEventListener("click", (event) => {
+  const editButton = event.target.closest("[data-edit-schedule]");
+  if (editButton) {
+    const input = editButton.closest(".config-schedule-wrap")?.querySelector('[data-field="schedule"]');
+    if (!input) return;
+    input.readOnly = false;
+    input.setAttribute("aria-readonly", "false");
+    input.closest(".config-schedule-wrap")?.classList.add("is-editing");
+    input.focus();
+    input.select();
+    return;
+  }
   const button = event.target.closest("[data-remove]");
   if (!button) return;
   state.importConfig.splice(Number(button.dataset.remove), 1);
@@ -1886,6 +2080,26 @@ elements["desired-date-panel"].addEventListener("submit", (event) => {
 elements["plan-select"].addEventListener("change", (event) => {
   state.activeId = event.target.value;
   renderActiveReport();
+});
+elements["report-project-folder"].addEventListener("click", async () => {
+  const report = activeReport();
+  if (!report) return;
+  const relativeFolder = String(report.relativePath || "").replace(/[\\/][^\\/]+$/, "");
+  const button = elements["report-project-folder"];
+  button.disabled = true;
+  try {
+    const response = await fetch("/api/project-folder/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: report.id, relativeFolder }),
+    });
+    await readApiResponse(response);
+    showToast("Pasta do projeto aberta");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    button.disabled = false;
+  }
 });
 elements["plan-settings-select"].addEventListener("change", (event) => {
   state.selectedPlanName = event.target.value;
@@ -1974,6 +2188,15 @@ elements["statement-plan-list"].addEventListener("keydown", (event) => {
     restoreTreasuryPlanCell(index);
   }
 });
+elements["statement-plan-list"].addEventListener("change", (event) => {
+  const input = event.target.closest("[data-treasury-asa][data-treasury-row-index]");
+  if (!input) return;
+  saveTreasuryAsaStatus(
+    Number(input.dataset.treasuryRowIndex),
+    input.dataset.treasuryAsa,
+    input.checked,
+  );
+});
 for (const button of [elements["treasury-import-tab"], elements["treasury-records-tab"]]) {
   button.addEventListener("click", () => setTreasuryView(button.dataset.treasuryView));
 }
@@ -2006,5 +2229,9 @@ elements["app-dialog"].addEventListener("click", (event) => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements["app-dialog"].classList.contains("hidden")) closeAppDialog(false);
 });
-loadReports();
-loadDesiredDate();
+async function initializePanel() {
+  await loadDesiredDate();
+  await loadReports();
+}
+
+initializePanel();

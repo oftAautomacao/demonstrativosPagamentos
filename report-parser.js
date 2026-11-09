@@ -1,6 +1,7 @@
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
+const { canonicalPlanName } = require("./plan-name");
 
 const REPORT_PATTERN = /^relatorio_.+\.txt$/i;
 
@@ -487,9 +488,7 @@ function inferContext(filePath, rootPath) {
   const parts = relative.split(path.sep);
   const projectIndex = parts.findIndex((part) => normalizeKey(part) === "demonstpagprojeto");
   const baseIndex = projectIndex >= 0 ? projectIndex + 1 : 0;
-  const agreement = clean((parts[baseIndex] || "Plano não identificado")
-    .replace(/[_-]+/g, " ")
-    .replace(/([a-zà-ÿ])([A-ZÀ-Þ])/g, "$1 $2"));
+  const agreement = canonicalPlanName(parts[baseIndex] || "Plano não identificado");
   const period = parts.length > baseIndex + 2 ? parts[baseIndex + 1] : path.basename(path.dirname(filePath));
   return { agreement, period, relativePath: relative };
 }
