@@ -13,6 +13,7 @@ const { readReadonlyReports } = require("./readonly-reports");
 const { openProjectFolder, openRelativeProjectFolder } = require("./project-folder");
 const { canonicalPlanName, normalizedPlanKey } = require("./plan-name");
 const { analyzeUploadedStatement, buildPlanCandidates } = require("./statement-analyzer");
+const { archiveStatementPdf } = require("./statement-archive");
 const {
   checkTreasuryFirebase,
   loadTreasuryPayments,
@@ -211,6 +212,13 @@ const server = http.createServer(async (request, response) => {
         fileName: body.fileName,
         base64: body.base64,
         candidates,
+      });
+      analysis.archive = archiveStatementPdf({
+        fileName: body.fileName,
+        base64: body.base64,
+        matches: analysis.matches,
+        fallbackMonth: body.archiveMonth,
+        fallbackYear: body.archiveYear,
       });
       try {
         analysis.persistence = await saveTreasuryPayments(analysis.matches, { sourceBank: analysis.sourceBank });

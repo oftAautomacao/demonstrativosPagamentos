@@ -1549,6 +1549,7 @@ async function analyzeStatementFiles(fileList) {
   elements["statement-progress"].classList.remove("hidden");
   let importedFiles = 0;
   let importedPayments = 0;
+  let archivedFiles = 0;
   const failures = [];
   try {
     for (let index = 0; index < files.length; index += 1) {
@@ -1559,7 +1560,12 @@ async function analyzeStatementFiles(fileList) {
         const response = await fetch("/api/payment-statement/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ fileName: file.name, base64 }),
+          body: JSON.stringify({
+            fileName: file.name,
+            base64,
+            archiveMonth: state.selectedMonth,
+            archiveYear: state.selectedYear,
+          }),
         });
         const data = await readApiResponse(response);
         if (!data.persistence?.saved) {
@@ -1567,6 +1573,7 @@ async function analyzeStatementFiles(fileList) {
         }
         importedFiles += 1;
         importedPayments += Number(data.persistence.count || 0);
+        if (data.archive?.saved) archivedFiles += 1;
       } catch (error) {
         failures.push(`${file.name}: ${error.message}`);
       }
@@ -1574,7 +1581,7 @@ async function analyzeStatementFiles(fileList) {
 
     if (importedFiles) {
       await loadTreasuryPayments({
-        statusText: `${importedFiles.toLocaleString("pt-BR")} extrato(s) importado(s) · ${importedPayments.toLocaleString("pt-BR")} pagamento(s) atualizado(s)`,
+        statusText: `${importedFiles.toLocaleString("pt-BR")} extrato(s) importado(s) · ${archivedFiles.toLocaleString("pt-BR")} PDF(s) arquivado(s) · ${importedPayments.toLocaleString("pt-BR")} pagamento(s) atualizado(s)`,
       });
       setTreasuryView("records", { load: false });
     }
@@ -1785,6 +1792,12 @@ function controlValue(value) {
   return `<span class="control-read-value ${className}">${escapeHtml(value || "—")}</span>`;
 }
 
+function controlStatusValue(value) {
+  const displayValue = escapeHtml(value || "—").replace(/\s+-\s+/, "<br>");
+  const className = String(value || "").trim() ? "" : "is-empty";
+  return `<span class="control-read-value control-status-value ${className}">${displayValue}</span>`;
+}
+
 function renderControlPayments() {
   const rows = state.controlPayments;
   elements["control-payments-rows"].innerHTML = rows.length
@@ -1795,9 +1808,10 @@ function renderControlPayments() {
         <td>${controlValue(row.paymentDate)}</td>
         <td>${controlValue(row.imported)}</td>
         <td>${controlValue(row.notImported)}</td>
+        <td>${controlStatusValue(row.status)}</td>
       </tr>
     `).join("")
-    : '<tr class="config-empty-row"><td colspan="5">Nenhum pagamento registrado.</td></tr>';
+    : '<tr class="config-empty-row"><td colspan="6">Nenhum pagamento registrado.</td></tr>';
 }
 
 async function loadControlPayments({ force = false } = {}) {

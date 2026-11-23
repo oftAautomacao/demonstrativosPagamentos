@@ -1,29 +1,55 @@
 const fs = require("node:fs");
 
-const PAYMENTS_HEADER_PATTERN = /^\|\s*Convenios\s*\|\s*Houve pagamento\?\s*\|\s*Data Pagamento\s*\|\s*Importacao\s*\|\s*Linhas Nao Importadas\s*\|\s*$/i;
+function splitRow(line) {
+  return line.split("|").slice(1, -1).map((cell) => cell.trim());
+}
+
+function normalizeHeader(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function paymentColumns(line) {
+  if (!line.trim().startsWith("|")) return null;
+  const headers = splitRow(line).map(normalizeHeader);
+  const explicitStatus = headers.indexOf("status");
+  const columns = {
+    agreement: headers.findIndex((header) => header === "convenios" || header === "convenio"),
+    hadPayment: headers.findIndex((header) => header.includes("houve") && header.includes("pagamento")),
+    paymentDate: headers.findIndex((header) => header.includes("data") && header.includes("pagamento")),
+    imported: headers.findIndex((header) => header === "importacao"),
+    notImported: headers.findIndex((header) => header.includes("linhas") && header.includes("nao importadas")),
+    status: explicitStatus >= 0
+      ? explicitStatus
+      : headers.findIndex((header) => header.startsWith("status download")),
+  };
+  return Object.values(columns).slice(0, 5).every((index) => index >= 0) ? columns : null;
+}
 
 function readControlPayments(filePath) {
   const text = fs.readFileSync(filePath, "utf8");
   const lines = text.split(/\r?\n/);
-  const headerIndex = lines.findIndex((line) => PAYMENTS_HEADER_PATTERN.test(line.trim()));
+  const headerIndex = lines.findIndex((line) => paymentColumns(line));
   if (headerIndex < 0) {
     throw new Error("A tabela PAGAMENTOS E IMPORTACAOS nao foi encontrada no Relatorio Controle.txt.");
   }
+  const columns = paymentColumns(lines[headerIndex]);
 
   const rows = [];
   for (let index = headerIndex + 1; index < lines.length; index += 1) {
     const line = lines[index].trim();
     if (!line) break;
     if (!line.startsWith("|") || /^\|[-|]+\|$/.test(line)) continue;
-    const cells = line.split("|").slice(1, -1).map((cell) => cell.trim());
-    if (cells.length < 5 || !cells[0]) continue;
-    rows.push({
-      agreement: cells[0],
-      hadPayment: cells[1],
-      paymentDate: cells[2],
-      imported: cells[3],
-      notImported: cells[4],
-    });
+    const cells = splitRow(line);
+    const row = Object.fromEntries(Object.entries(columns).map(([field, position]) => (
+      [field, position >= 0 ? cells[position] || "" : ""]
+    )));
+    if (Object.values(row).every((cell) => !cell)) continue;
+    rows.push(row);
   }
 
   return { rows, count: rows.length };

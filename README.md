@@ -25,7 +25,7 @@ python -m pip install -r requirements.txt
 - Extração de cada crédito `PGTO.SINISTRO AP/CERTIF.` como pagamento Bradesco, inclusive quando há vários créditos no mesmo dia;
 - Reconhecimento das variações e nomes truncados dos convênios, mantendo `CX Assistência` sem tentar atribuí-la a um plano desconhecido;
 - Consolidação por plano e data apenas quando o banco apresenta um mesmo pagamento fragmentado (Sulamerica e Intermédica/Notre Dame);
-- Evidências encontradas no extrato para conferência de cada convênio identificado, sem armazenar o arquivo enviado;
+- Evidências encontradas no extrato para conferência de cada convênio identificado e arquivamento automático dos PDFs em `C:\Users\Master\OneDrive\Área de Trabalho\demonstrativos de Pagamento anual\Extratos\AAAA_MM_MÊS`;
 - Salvamento automático dos pagamentos no Firebase Realtime Database em `/OFT/Faturamento/Tesouraria/{plano}/{aaaa-mm-dd}/{banco}/valorExtrato`; Bradesco e Banco do Brasil ficam como fontes complementares, enquanto o reenvio limpa e substitui somente os registros do mesmo banco e mês; quando há mais de um pagamento do mesmo plano, banco e data, são usados `valorExtrato2`, `valorExtrato3` e assim por diante;
 - Carregamento automático, ao abrir a Tesouraria, de todos os pagamentos já armazenados no Firebase de teste;
 - Na Tesouraria, todos os pagamentos exibem uma caneta para editar o nome do plano; o nome editado fica associado somente àquele pagamento no Firebase, sem alterar data, banco ou valor;
