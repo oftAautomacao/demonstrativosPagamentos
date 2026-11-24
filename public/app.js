@@ -1599,18 +1599,7 @@ function isSystemConfigRow(row) {
 }
 
 function sortImportConfigRows() {
-  state.importConfig.sort((left, right) => {
-    const leftSystem = isSystemConfigRow(left);
-    const rightSystem = isSystemConfigRow(right);
-    if (leftSystem || rightSystem) {
-      if (leftSystem && rightSystem) return Number(left.systemOrder || 0) - Number(right.systemOrder || 0);
-      return leftSystem ? -1 : 1;
-    }
-    const leftDate = String(left.downloadDate || "9999-99-99");
-    const rightDate = String(right.downloadDate || "9999-99-99");
-    return leftDate.localeCompare(rightDate)
-      || String(left.agreement || "").localeCompare(String(right.agreement || ""), "pt-BR", { sensitivity: "base" });
-  });
+  state.importConfig.sort(compareConfigRowsByDownload);
 }
 
 function renderImportConfig() {

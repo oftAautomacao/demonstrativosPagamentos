@@ -55,6 +55,22 @@
     }[plan] || "";
   }
 
+  function compareConfigRowsByDownload(left = {}, right = {}) {
+    const leftSystem = left.systemRow === true;
+    const rightSystem = right.systemRow === true;
+    if (leftSystem || rightSystem) {
+      if (leftSystem && rightSystem) return Number(left.systemOrder || 0) - Number(right.systemOrder || 0);
+      return leftSystem ? -1 : 1;
+    }
+    const leftDate = String(left.downloadDate || "9999-99-99");
+    const rightDate = String(right.downloadDate || "9999-99-99");
+    const leftTime = String(left.downloadTime || "99:99");
+    const rightTime = String(right.downloadTime || "99:99");
+    return leftDate.localeCompare(rightDate)
+      || leftTime.localeCompare(rightTime)
+      || String(left.agreement || "").localeCompare(String(right.agreement || ""), "pt-BR", { sensitivity: "base" });
+  }
+
   function nextImportSchedule(downloadDate) {
     const match = String(downloadDate || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
     if (!match) return "";
@@ -79,10 +95,16 @@
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { automaticDownloadDate, automaticDownloadTime, nextImportSchedule };
+    module.exports = {
+      automaticDownloadDate,
+      automaticDownloadTime,
+      compareConfigRowsByDownload,
+      nextImportSchedule,
+    };
   } else {
     root.automaticDownloadDate = automaticDownloadDate;
     root.automaticDownloadTime = automaticDownloadTime;
+    root.compareConfigRowsByDownload = compareConfigRowsByDownload;
     root.nextImportSchedule = nextImportSchedule;
   }
 }(typeof globalThis !== "undefined" ? globalThis : this));

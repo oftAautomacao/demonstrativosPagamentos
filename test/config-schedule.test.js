@@ -4,6 +4,7 @@ const assert = require("node:assert/strict");
 const {
   automaticDownloadDate,
   automaticDownloadTime,
+  compareConfigRowsByDownload,
   nextImportSchedule,
 } = require("../public/config-schedule");
 
@@ -41,6 +42,28 @@ test("define os horarios de download dos convenios e linhas operacionais", () =>
     varredura: "02:00",
     tesouraria: "07:00",
   });
+});
+
+test("ordena planos por data, horario e nome mantendo linhas operacionais no topo", () => {
+  const rows = [
+    { agreement: "Fio Saúde", downloadDate: "2026-11-25", downloadTime: "01:00" },
+    { agreement: "Itaú", downloadDate: "2026-11-25", downloadTime: "02:00" },
+    { agreement: "Porto Seguro", downloadDate: "2026-11-25", downloadTime: "02:30" },
+    { agreement: "Sulamerica", downloadDate: "2026-11-20", downloadTime: "01:00" },
+    { agreement: "Intermedica", downloadDate: "2026-11-20", downloadTime: "02:00" },
+    { agreement: "Tesouraria", systemRow: true, systemOrder: 1, downloadDate: "2026-12-02", downloadTime: "07:00" },
+    { agreement: "Varredura Anterior", systemRow: true, systemOrder: 0, downloadDate: "2026-12-01", downloadTime: "02:00" },
+  ];
+
+  assert.deepEqual(rows.sort(compareConfigRowsByDownload).map((row) => row.agreement), [
+    "Varredura Anterior",
+    "Tesouraria",
+    "Sulamerica",
+    "Intermedica",
+    "Fio Saúde",
+    "Itaú",
+    "Porto Seguro",
+  ]);
 });
 
 test("calcula o primeiro dia do mês seguinte na virada do ano", () => {
