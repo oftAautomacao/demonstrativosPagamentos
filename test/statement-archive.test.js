@@ -3,9 +3,20 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
-const { archiveStatementPdf, statementPeriod } = require("../statement-archive");
+const {
+  DEFAULT_STATEMENT_ARCHIVE_ROOT,
+  archiveStatementPdf,
+  statementPeriod,
+} = require("../statement-archive");
 
 const pdf = Buffer.from("%PDF-1.4\nextrato de teste\n%%EOF");
+
+test("usa a nova pasta de extratos dentro do projeto Claude", () => {
+  assert.equal(
+    DEFAULT_STATEMENT_ARCHIVE_ROOT,
+    "C:\\Users\\Master\\OneDrive\\Documentos\\OFT\\Claude\\DemonstPagProjeto\\demonstrativos de Pagamento anual\\Extratos",
+  );
+});
 
 test("identifica a competencia mais frequente nas datas do extrato", () => {
   assert.deepEqual(statementPeriod({

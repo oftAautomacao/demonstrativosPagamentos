@@ -20,7 +20,12 @@ const {
   saveTreasuryPayments,
   updateTreasuryPaymentPlan,
 } = require("./treasury-firebase");
-const { loadConfigDownloadDates, saveConfigDownloadDate } = require("./config-draft-firebase");
+const {
+  loadConfigDownloadDates,
+  loadConfigDownloadTimes,
+  saveConfigDownloadDate,
+  saveConfigDownloadTime,
+} = require("./config-draft-firebase");
 const {
   loadTreasuryAsaStatuses,
   mergeTreasuryAsaStatuses,
@@ -34,6 +39,23 @@ const LOCAL_REPORTS_CONFIG = path.join(__dirname, ".reports-root");
 const REPORTS_ROOT = getReportsRoot();
 const CONTROL_REPORT_PATH = path.join(REPORTS_ROOT, "Relatorio Controle.txt");
 const SHOULD_OPEN = process.argv.includes("--open");
+const OPERATIONAL_CONFIG_ROWS = [
+  {
+    agreement: "Varredura Anterior",
+    subtitle: "Verificar pagamentos após data de download",
+    execute: "Nao",
+    schedule: "",
+    systemRow: true,
+    systemOrder: 0,
+  },
+  {
+    agreement: "Tesouraria",
+    execute: "Nao",
+    schedule: "",
+    systemRow: true,
+    systemOrder: 1,
+  },
+];
 
 function configWithDiscoveredPlans(config) {
   const rows = (config.rows || []).map((row) => ({
@@ -60,12 +82,15 @@ function configWithDiscoveredPlans(config) {
     existing.add(key);
   }
   rows.sort((left, right) => left.agreement.localeCompare(right.agreement, "pt-BR", { sensitivity: "base" }));
-  return { ...config, rows };
+  return {
+    ...config,
+    rows: [...OPERATIONAL_CONFIG_ROWS.map((row) => ({ ...row })), ...rows],
+  };
 }
 
-function configDraftDate(dates, agreement) {
+function configDraftValue(values, agreement) {
   const key = normalizedPlanKey(agreement);
-  const match = Object.entries(dates || {}).find(([name]) => normalizedPlanKey(name) === key);
+  const match = Object.entries(values || {}).find(([name]) => normalizedPlanKey(name) === key);
   return match?.[1] || "";
 }
 
@@ -331,21 +356,38 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "GET" && requestUrl.pathname === "/api/import-config") {
     try {
       const config = configWithDiscoveredPlans(readImportConfig(CONTROL_REPORT_PATH));
+      const draftErrors = [];
       try {
         const draft = await loadConfigDownloadDates();
         config.rows = config.rows.map((row) => ({
           ...row,
-          downloadDate: configDraftDate(draft.dates, row.agreement),
+          downloadDate: configDraftValue(draft.dates, row.agreement),
         }));
-        config.draft = {
+        config.dateDraft = {
           environment: draft.environment,
           path: draft.path,
           count: draft.count,
         };
       } catch (draftError) {
         config.rows = config.rows.map((row) => ({ ...row, downloadDate: "" }));
-        config.draftError = draftError.message;
+        draftErrors.push(`datas: ${draftError.message}`);
       }
+      try {
+        const timeDraft = await loadConfigDownloadTimes();
+        config.rows = config.rows.map((row) => ({
+          ...row,
+          downloadTime: configDraftValue(timeDraft.times, row.agreement),
+        }));
+        config.timeDraft = {
+          environment: timeDraft.environment,
+          path: timeDraft.path,
+          count: timeDraft.count,
+        };
+      } catch (draftError) {
+        config.rows = config.rows.map((row) => ({ ...row, downloadTime: "" }));
+        draftErrors.push(`horários: ${draftError.message}`);
+      }
+      if (draftErrors.length) config.draftError = draftErrors.join(" | ");
       sendJson(response, 200, config);
     } catch (error) {
       sendJson(response, 500, {
@@ -363,6 +405,19 @@ const server = http.createServer(async (request, response) => {
     } catch (error) {
       sendJson(response, 400, {
         error: "Não foi possível salvar a data de download do demonstrativo.",
+        detail: error.message,
+      });
+    }
+    return;
+  }
+
+  if (["POST", "PUT"].includes(request.method) && requestUrl.pathname === "/api/config-download-time") {
+    try {
+      const body = await readJsonBody(request);
+      sendJson(response, 200, await saveConfigDownloadTime(body.agreement, body.downloadTime));
+    } catch (error) {
+      sendJson(response, 400, {
+        error: "Não foi possível salvar o horário de download do demonstrativo.",
         detail: error.message,
       });
     }

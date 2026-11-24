@@ -47,6 +47,7 @@ const state = {
   importConfigDirty: false,
   importConfigSaveTimer: null,
   configDownloadSaveTimers: new Map(),
+  configDownloadTimeSaveTimers: new Map(),
   controlPayments: [],
   controlPaymentsLoaded: false,
   treasuryView: "records",
@@ -1593,40 +1594,68 @@ async function analyzeStatementFiles(fileList) {
   }
 }
 
+function isSystemConfigRow(row) {
+  return row?.systemRow === true;
+}
+
+function sortImportConfigRows() {
+  state.importConfig.sort((left, right) => {
+    const leftSystem = isSystemConfigRow(left);
+    const rightSystem = isSystemConfigRow(right);
+    if (leftSystem || rightSystem) {
+      if (leftSystem && rightSystem) return Number(left.systemOrder || 0) - Number(right.systemOrder || 0);
+      return leftSystem ? -1 : 1;
+    }
+    const leftDate = String(left.downloadDate || "9999-99-99");
+    const rightDate = String(right.downloadDate || "9999-99-99");
+    return leftDate.localeCompare(rightDate)
+      || String(left.agreement || "").localeCompare(String(right.agreement || ""), "pt-BR", { sensitivity: "base" });
+  });
+}
+
 function renderImportConfig() {
   const rows = state.importConfig;
   elements["config-rows"].innerHTML = rows.length
     ? rows.map((row, index) => `
-      <tr data-index="${index}">
+      <tr data-index="${index}" class="${isSystemConfigRow(row) ? "config-system-row" : ""}">
         <td>
           <div class="config-name-cell">
             <span class="config-row-dot" aria-hidden="true"></span>
-            <input type="text" maxlength="16" data-field="agreement" value="${escapeHtml(row.agreement)}" aria-label="Convênio da linha ${index + 1}" />
+            ${isSystemConfigRow(row)
+              ? `<span class="config-system-name"><strong>${escapeHtml(row.agreement)}</strong>${row.subtitle ? `<small>${escapeHtml(row.subtitle)}</small>` : ""}</span>`
+              : `<input type="text" maxlength="16" data-field="agreement" value="${escapeHtml(row.agreement)}" aria-label="Convênio da linha ${index + 1}" />`}
           </div>
         </td>
         <td>
-          <select data-field="execute" aria-label="Executar importação da linha ${index + 1}">
-            <option value="Sim" ${row.execute === "Sim" ? "selected" : ""}>Sim</option>
-            <option value="Nao" ${row.execute === "Nao" ? "selected" : ""}>Não</option>
-          </select>
+          ${isSystemConfigRow(row)
+            ? ""
+            : `<select data-field="execute" aria-label="Executar importação da linha ${index + 1}">
+                <option value="Sim" ${row.execute === "Sim" ? "selected" : ""}>Sim</option>
+                <option value="Nao" ${row.execute === "Nao" ? "selected" : ""}>Não</option>
+              </select>`}
         </td>
         <td><input class="config-download-date" type="date" data-field="downloadDate" value="${escapeHtml(row.downloadDate || "")}" aria-label="Data download demonstrativo da linha ${index + 1}" aria-readonly="true" readonly /></td>
+        <td><input class="config-download-time" type="time" data-field="downloadTime" value="${escapeHtml(row.downloadTime || "")}" aria-label="Hora download demonstrativo da linha ${index + 1}" aria-readonly="true" readonly /></td>
         <td>
-          <span class="config-schedule-wrap">
-            <input class="config-schedule" type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" data-field="schedule" value="${escapeHtml(row.schedule)}" aria-label="Agendamento da importação da linha ${index + 1}" aria-readonly="true" readonly />
-            <button class="config-schedule-edit" type="button" data-edit-schedule="${index}" title="Editar agendamento da importação" aria-label="Editar agendamento da importação da linha ${index + 1}">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Zm9.9-9.9 3.2 3.2M14.8 5.2l1.4-1.4a1.6 1.6 0 0 1 2.3 0l1.7 1.7a1.6 1.6 0 0 1 0 2.3l-1.4 1.4" /></svg>
-            </button>
-          </span>
+          ${isSystemConfigRow(row)
+            ? ""
+            : `<span class="config-schedule-wrap">
+                <input class="config-schedule" type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" data-field="schedule" value="${escapeHtml(row.schedule)}" aria-label="Agendamento da importação da linha ${index + 1}" aria-readonly="true" readonly />
+                <button class="config-schedule-edit" type="button" data-edit-schedule="${index}" title="Editar agendamento da importação" aria-label="Editar agendamento da importação da linha ${index + 1}">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Zm9.9-9.9 3.2 3.2M14.8 5.2l1.4-1.4a1.6 1.6 0 0 1 2.3 0l1.7 1.7a1.6 1.6 0 0 1 0 2.3l-1.4 1.4" /></svg>
+                </button>
+              </span>`}
         </td>
         <td>
-          <button class="config-remove-button" type="button" data-remove="${index}" title="Remover convênio" aria-label="Remover convênio da linha ${index + 1}">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>
-          </button>
+          ${isSystemConfigRow(row)
+            ? '<span class="visually-hidden">Linha operacional fixa</span>'
+            : `<button class="config-remove-button" type="button" data-remove="${index}" title="Remover convênio" aria-label="Remover convênio da linha ${index + 1}">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5" /></svg>
+              </button>`}
         </td>
       </tr>
     `).join("")
-    : '<tr class="config-empty-row"><td colspan="5">Nenhum convênio configurado. Clique em Adicionar para criar uma linha.</td></tr>';
+    : '<tr class="config-empty-row"><td colspan="6">Nenhum convênio configurado. Clique em Adicionar para criar uma linha.</td></tr>';
 }
 
 function showConfigError(message) {
@@ -1643,17 +1672,20 @@ async function loadImportConfig({ force = false } = {}) {
     const response = await fetch("/api/import-config", { cache: "no-store" });
     const data = await readApiResponse(response);
     state.importConfig = data.rows || [];
-    const automaticRows = applyAutomaticDownloadDates({ onlyEmpty: true });
+    const automaticRows = applyAutomaticDownloadDates();
+    const automaticTimeRows = applyAutomaticDownloadTimes();
     state.importConfigLoaded = true;
     state.importConfigDirty = false;
-    renderImportConfig();
     if (automaticRows.length) {
       scheduleImportConfigSave();
       automaticRows.forEach((index) => scheduleConfigDownloadDateSave(index, { silent: true }));
     }
+    automaticTimeRows.forEach((index) => scheduleConfigDownloadTimeSave(index, { silent: true }));
+    sortImportConfigRows();
+    renderImportConfig();
     elements["config-content"].classList.remove("hidden");
     if (data.draftError) {
-      showConfigError(`As configurações do TXT foram carregadas, mas as datas de download não puderam ser lidas: ${data.draftError}`);
+      showConfigError(`As configurações do TXT foram carregadas, mas parte dos dados do Firebase não pôde ser lida: ${data.draftError}`);
     }
   } catch (error) {
     state.importConfigLoaded = false;
@@ -1665,7 +1697,7 @@ async function loadImportConfig({ force = false } = {}) {
 
 function importConfigIsComplete() {
   const names = new Set();
-  return state.importConfig.every((row) => {
+  return state.importConfig.filter((row) => !isSystemConfigRow(row)).every((row) => {
     const agreement = String(row.agreement || "").trim();
     const schedule = String(row.schedule || "").trim();
     const key = agreement.toLocaleLowerCase("pt-BR");
@@ -1687,7 +1719,7 @@ function scheduleImportConfigSave() {
 }
 
 async function saveImportConfig() {
-  const rowsToSave = state.importConfig.map((row) => ({
+  const rowsToSave = state.importConfig.filter((row) => !isSystemConfigRow(row)).map((row) => ({
     agreement: row.agreement,
     execute: row.execute,
     schedule: row.schedule,
@@ -1702,17 +1734,23 @@ async function saveImportConfig() {
     });
     const data = await readApiResponse(response);
     state.importConfigLoaded = true;
-    const currentRowsForText = state.importConfig.map((row) => ({
+    const currentRowsForText = state.importConfig.filter((row) => !isSystemConfigRow(row)).map((row) => ({
       agreement: row.agreement,
       execute: row.execute,
       schedule: row.schedule,
     }));
     if (JSON.stringify(currentRowsForText) === serializedRows) {
-      const downloadDates = new Map(state.importConfig.map((row) => [row.agreement, row.downloadDate || ""]));
-      state.importConfig = (data.rows || []).map((row) => ({
+      const rowDetails = new Map(state.importConfig.map((row) => [row.agreement, {
+        downloadDate: row.downloadDate || "",
+        downloadTime: row.downloadTime || "",
+      }]));
+      const systemRows = state.importConfig.filter((row) => isSystemConfigRow(row));
+      state.importConfig = [...systemRows, ...(data.rows || []).map((row) => ({
         ...row,
-        downloadDate: downloadDates.get(row.agreement) || "",
-      }));
+        downloadDate: rowDetails.get(row.agreement)?.downloadDate || "",
+        downloadTime: rowDetails.get(row.agreement)?.downloadTime || "",
+      }))];
+      sortImportConfigRows();
       state.importConfigDirty = false;
     } else {
       scheduleImportConfigSave();
@@ -1757,6 +1795,40 @@ function scheduleConfigDownloadDateSave(index, { silent = false } = {}) {
   }, 500));
 }
 
+function scheduleConfigDownloadTimeSave(index, { silent = false } = {}) {
+  const row = state.importConfig[index];
+  if (!row) return;
+  const agreement = String(row.agreement || "").trim();
+  const downloadTime = String(row.downloadTime || "").trim();
+  const timerKey = `${agreement || index}:time`;
+  clearTimeout(state.configDownloadTimeSaveTimers.get(timerKey));
+  if (!agreement) {
+    showConfigError("Informe o convênio antes do horário de download do demonstrativo.");
+    return;
+  }
+
+  state.configDownloadTimeSaveTimers.set(timerKey, setTimeout(async () => {
+    try {
+      const response = await fetch("/api/config-download-time", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agreement, downloadTime }),
+      });
+      const data = await readApiResponse(response);
+      showConfigError("");
+      if (!silent) {
+        showToast(data.downloadTime
+          ? `Horário de download de ${agreement} salvo no Firebase de teste`
+          : `Horário de download de ${agreement} removido do Firebase de teste`);
+      }
+    } catch (error) {
+      showConfigError(error.message);
+    } finally {
+      state.configDownloadTimeSaveTimers.delete(timerKey);
+    }
+  }, 500));
+}
+
 function applyAutomaticDownloadDates({ onlyEmpty = false, indexes = null } = {}) {
   const allowedIndexes = indexes ? new Set(indexes) : null;
   const changed = [];
@@ -1768,6 +1840,20 @@ function applyAutomaticDownloadDates({ onlyEmpty = false, indexes = null } = {})
     row.downloadDate = downloadDate;
     const schedule = nextImportSchedule(downloadDate);
     if (schedule) row.schedule = schedule;
+    changed.push(index);
+  });
+  return changed;
+}
+
+function applyAutomaticDownloadTimes({ onlyEmpty = false, indexes = null } = {}) {
+  const allowedIndexes = indexes ? new Set(indexes) : null;
+  const changed = [];
+  state.importConfig.forEach((row, index) => {
+    if (allowedIndexes && !allowedIndexes.has(index)) return;
+    if (onlyEmpty && row.downloadTime) return;
+    const downloadTime = automaticDownloadTime(row.agreement);
+    if (!downloadTime || downloadTime === row.downloadTime) return;
+    row.downloadTime = downloadTime;
     changed.push(index);
   });
   return changed;
@@ -1808,10 +1894,11 @@ function renderControlPayments() {
         <td>${controlValue(row.paymentDate)}</td>
         <td>${controlValue(row.imported)}</td>
         <td>${controlValue(row.notImported)}</td>
+        <td>${controlValue(row.treasuryValue)}</td>
         <td>${controlStatusValue(row.status)}</td>
       </tr>
     `).join("")
-    : '<tr class="config-empty-row"><td colspan="6">Nenhum pagamento registrado.</td></tr>';
+    : '<tr class="config-empty-row"><td colspan="7">Nenhum pagamento registrado.</td></tr>';
 }
 
 async function loadControlPayments({ force = false } = {}) {
@@ -1877,9 +1964,10 @@ async function saveDesiredDate() {
     fillDesiredDates(data.month, data.year);
     const automaticRows = applyAutomaticDownloadDates();
     if (automaticRows.length) {
-      renderImportConfig();
       scheduleImportConfigSave();
       automaticRows.forEach((index) => scheduleConfigDownloadDateSave(index, { silent: true }));
+      sortImportConfigRows();
+      renderImportConfig();
     }
     showToast(automaticRows.length
       ? `Data Desejada: ${data.value} · datas de download atualizadas`
@@ -2018,7 +2106,7 @@ elements["plan-credentials-list"].addEventListener("click", (event) => {
   button.setAttribute("aria-label", button.title);
 });
 elements["config-add"].addEventListener("click", () => {
-  state.importConfig.push({ agreement: "", execute: "Nao", schedule: "", downloadDate: "" });
+  state.importConfig.push({ agreement: "", execute: "Nao", schedule: "", downloadDate: "", downloadTime: "" });
   state.importConfigDirty = true;
   renderImportConfig();
   const lastInput = elements["config-rows"].querySelector("tr:last-child input");
@@ -2029,6 +2117,7 @@ elements["config-rows"].addEventListener("input", (event) => {
   const row = event.target.closest("tr[data-index]");
   if (!field || !row) return;
   const index = Number(row.dataset.index);
+  if (isSystemConfigRow(state.importConfig[index])) return;
   state.importConfig[index][field] = event.target.value;
   if (field === "downloadDate") {
     updateScheduleFromDownloadDate(index);
@@ -2042,6 +2131,7 @@ elements["config-rows"].addEventListener("change", (event) => {
   const row = event.target.closest("tr[data-index]");
   if (!field || !row) return;
   const index = Number(row.dataset.index);
+  if (isSystemConfigRow(state.importConfig[index])) return;
   state.importConfig[index][field] = event.target.value;
   if (field === "downloadDate") {
     updateScheduleFromDownloadDate(index);
@@ -2050,10 +2140,12 @@ elements["config-rows"].addEventListener("change", (event) => {
   }
   if (field === "agreement") {
     const automaticRows = applyAutomaticDownloadDates({ indexes: [index] });
+    const automaticTimeRows = applyAutomaticDownloadTimes({ indexes: [index] });
     if (automaticRows.length) {
       renderImportConfig();
       scheduleConfigDownloadDateSave(index, { silent: true });
     }
+    if (automaticTimeRows.length) scheduleConfigDownloadTimeSave(index, { silent: true });
   }
   scheduleImportConfigSave();
 });
@@ -2082,7 +2174,9 @@ elements["config-rows"].addEventListener("click", (event) => {
   }
   const button = event.target.closest("[data-remove]");
   if (!button) return;
-  state.importConfig.splice(Number(button.dataset.remove), 1);
+  const index = Number(button.dataset.remove);
+  if (isSystemConfigRow(state.importConfig[index])) return;
+  state.importConfig.splice(index, 1);
   renderImportConfig();
   scheduleImportConfigSave();
 });

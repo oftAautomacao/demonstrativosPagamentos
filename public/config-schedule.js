@@ -24,7 +24,7 @@
 
     const plan = normalizedPlanKey(agreement);
     const downloadDay = {
-      sulamerica: 18,
+      sulamerica: 20,
       intermedica: 20,
       fiosaude: 25,
       itau: 25,
@@ -32,11 +32,27 @@
     }[plan];
     if (downloadDay) return isoDate(year, month, downloadDay);
 
-    if (["caberj", "caberjintegral"].includes(plan)) {
+    if (["caberj", "caberjintegral", "varreduraanterior", "tesouraria"].includes(plan)) {
       const nextMonth = new Date(Date.UTC(year, month, 1));
-      return isoDate(nextMonth.getUTCFullYear(), nextMonth.getUTCMonth() + 1, 1);
+      const day = plan === "tesouraria" ? 2 : 1;
+      return isoDate(nextMonth.getUTCFullYear(), nextMonth.getUTCMonth() + 1, day);
     }
     return "";
+  }
+
+  function automaticDownloadTime(agreement) {
+    const plan = normalizedPlanKey(agreement);
+    return {
+      varreduraanterior: "02:00",
+      tesouraria: "07:00",
+      fiosaude: "01:00",
+      portoseguro: "02:30",
+      itau: "02:00",
+      caberj: "01:00",
+      caberjintegral: "01:30",
+      sulamerica: "01:00",
+      intermedica: "02:00",
+    }[plan] || "";
   }
 
   function nextImportSchedule(downloadDate) {
@@ -63,9 +79,10 @@
   }
 
   if (typeof module !== "undefined" && module.exports) {
-    module.exports = { automaticDownloadDate, nextImportSchedule };
+    module.exports = { automaticDownloadDate, automaticDownloadTime, nextImportSchedule };
   } else {
     root.automaticDownloadDate = automaticDownloadDate;
+    root.automaticDownloadTime = automaticDownloadTime;
     root.nextImportSchedule = nextImportSchedule;
   }
 }(typeof globalThis !== "undefined" ? globalThis : this));

@@ -1,7 +1,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 
-const DEFAULT_STATEMENT_ARCHIVE_ROOT = "C:\\Users\\Master\\OneDrive\\Área de Trabalho\\demonstrativos de Pagamento anual\\Extratos";
+const DEFAULT_STATEMENT_ARCHIVE_ROOT = "C:\\Users\\Master\\OneDrive\\Documentos\\OFT\\Claude\\DemonstPagProjeto\\demonstrativos de Pagamento anual\\Extratos";
 const MONTH_NAMES = [
   "", "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
   "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",

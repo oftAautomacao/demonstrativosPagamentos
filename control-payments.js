@@ -23,6 +23,9 @@ function paymentColumns(line) {
     paymentDate: headers.findIndex((header) => header.includes("data") && header.includes("pagamento")),
     imported: headers.findIndex((header) => header === "importacao"),
     notImported: headers.findIndex((header) => header.includes("linhas") && header.includes("nao importadas")),
+    treasuryValue: headers.findIndex((header) => (
+      header === "valor na tesouraria" || header === "lavor na teouraria"
+    )),
     status: explicitStatus >= 0
       ? explicitStatus
       : headers.findIndex((header) => header.startsWith("status download")),

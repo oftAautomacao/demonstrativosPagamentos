@@ -24,8 +24,8 @@ test("le a tabela de pagamentos e importacoes sem alterar o arquivo", () => {
 
   assert.deepEqual(readControlPayments(filePath), {
     rows: [
-      { agreement: "Intermedica", hadPayment: "Sim", paymentDate: "20/09/2026", imported: "", notImported: "", status: "" },
-      { agreement: "Sulamerica", hadPayment: "Sim", paymentDate: "10/09/2026", imported: "Sim", notImported: "Nao", status: "" },
+      { agreement: "Intermedica", hadPayment: "Sim", paymentDate: "20/09/2026", imported: "", notImported: "", treasuryValue: "", status: "" },
+      { agreement: "Sulamerica", hadPayment: "Sim", paymentDate: "10/09/2026", imported: "Sim", notImported: "Nao", treasuryValue: "", status: "" },
     ],
     count: 2,
   });
@@ -51,6 +51,7 @@ test("le o status mesmo quando as demais colunas nao estao preenchidas", () => {
       paymentDate: "",
       imported: "",
       notImported: "",
+      treasuryValue: "",
       status: "Erro ao processar o pagamento",
     }],
     count: 1,
@@ -62,9 +63,9 @@ test("usa Status Download como status sem deslocar as colunas seguintes", () => 
   const filePath = path.join(folder, "Relatorio Controle.txt");
   const sample = [
     "PAGAMENTOS E IMPORTACAOS",
-    "| Convenios  | Houve pagamento? | Data Pagamento | Status Download                               | Importacao | Linhas Nao Importadas |",
-    "|------------|-------------------|----------------|-----------------------------------------------|------------|-----------------------|",
-    "| Intermedica|                   |                | NAO EXECUTOU - PC ausente em 20/11/2026 05:00 |            |                       |",
+    "| Convenios  | Houve pagamento? | Data Pagamento | Status Download                               | Importacao | Linhas Nao Importadas | Valor na Tesouraria |",
+    "|------------|-------------------|----------------|-----------------------------------------------|------------|-----------------------|---------------------|",
+    "| Intermedica|                   |                | NAO EXECUTOU - PC ausente em 20/11/2026 05:00 |            |                       | Nao                 |",
     "",
   ].join("\n");
   fs.writeFileSync(filePath, sample, "utf8");
@@ -76,6 +77,7 @@ test("usa Status Download como status sem deslocar as colunas seguintes", () => 
       paymentDate: "",
       imported: "",
       notImported: "",
+      treasuryValue: "Nao",
       status: "NAO EXECUTOU - PC ausente em 20/11/2026 05:00",
     }],
     count: 1,

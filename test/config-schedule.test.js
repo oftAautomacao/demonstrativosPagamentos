@@ -1,16 +1,46 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { automaticDownloadDate, nextImportSchedule } = require("../public/config-schedule");
+const {
+  automaticDownloadDate,
+  automaticDownloadTime,
+  nextImportSchedule,
+} = require("../public/config-schedule");
 
 test("calcula as datas de download a partir da competência desejada", () => {
-  assert.equal(automaticDownloadDate("Sulamerica", 11, 2026), "2026-11-18");
+  assert.equal(automaticDownloadDate("Sulamerica", 11, 2026), "2026-11-20");
   assert.equal(automaticDownloadDate("Intermédica", 11, 2026), "2026-11-20");
   for (const plan of ["Fio Saúde", "FioSaude", "Itaú", "Itau", "Porto Seguro", "PortoSeguro"]) {
     assert.equal(automaticDownloadDate(plan, 11, 2026), "2026-11-25");
   }
   assert.equal(automaticDownloadDate("Caberj", 11, 2026), "2026-12-01");
   assert.equal(automaticDownloadDate("Caberj Integral", 11, 2026), "2026-12-01");
+  assert.equal(automaticDownloadDate("Varredura Anterior", 11, 2026), "2026-12-01");
+  assert.equal(automaticDownloadDate("Tesouraria", 11, 2026), "2026-12-02");
+});
+
+test("define os horarios de download dos convenios e linhas operacionais", () => {
+  assert.deepEqual({
+    fioSaude: automaticDownloadTime("Fio Saúde"),
+    portoSeguro: automaticDownloadTime("Porto Seguro"),
+    itau: automaticDownloadTime("Itaú"),
+    caberj: automaticDownloadTime("Caberj"),
+    caberjIntegral: automaticDownloadTime("Caberj Integral"),
+    sulamerica: automaticDownloadTime("Sulamerica"),
+    intermedica: automaticDownloadTime("Intermédica"),
+    varredura: automaticDownloadTime("Varredura Anterior"),
+    tesouraria: automaticDownloadTime("Tesouraria"),
+  }, {
+    fioSaude: "01:00",
+    portoSeguro: "02:30",
+    itau: "02:00",
+    caberj: "01:00",
+    caberjIntegral: "01:30",
+    sulamerica: "01:00",
+    intermedica: "02:00",
+    varredura: "02:00",
+    tesouraria: "07:00",
+  });
 });
 
 test("calcula o primeiro dia do mês seguinte na virada do ano", () => {
