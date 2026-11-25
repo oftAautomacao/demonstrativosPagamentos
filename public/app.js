@@ -314,22 +314,21 @@ function renderPaymentDescription(report) {
   tableScroll.classList.toggle("fit-screen-scroll", fitScreen);
 }
 
-function guidePatientCount(group) {
-  // Cada linha interpretada representa uma referência de paciente. Cabeçalho,
-  // separadores e TOTAL já são removidos pelo parser antes de chegar à tela.
-  return (group.rows || []).filter((row) => (
-    Array.isArray(row) && row.some((value) => String(value || "").trim())
-  )).length;
-}
-
 function renderGuideInformation(report) {
   const groups = report.guideInformation || [];
+  const { namedPatients, unnamedRows } = report.guidePatientSummary;
+  const patientSummary = namedPatients
+    ? `${namedPatients.toLocaleString("pt-BR")} ${namedPatients === 1 ? "paciente identificado" : "pacientes identificados"} por nome`
+    : "O relatório não informa os nomes dos pacientes.";
+  const missingNames = namedPatients && unnamedRows
+    ? ` · ${unnamedRows.toLocaleString("pt-BR")} ${unnamedRows === 1 ? "linha sem nome" : "linhas sem nome"}`
+    : "";
   elements["guide-groups"].innerHTML = groups.length
-    ? groups.map((group) => `
+    ? `<div class="config-message">${patientSummary}${missingNames}</div>` + groups.map((group) => `
       <article class="guide-group">
         <header class="guide-group-heading">
           <span><small>Data de pagamento</small><strong>${escapeHtml(group.paymentDate || "Não informada")}</strong></span>
-          <span class="guide-count">${guidePatientCount(group).toLocaleString("pt-BR")} paciente(s)</span>
+          <span class="guide-count">${group.guideCount.toLocaleString("pt-BR")} ${group.guideCount === 1 ? "guia" : "guias"}</span>
         </header>
         <div class="table-scroll">
           <table class="guide-table${group.columns.length > 10 ? " extra-wide" : ""}">
@@ -341,7 +340,7 @@ function renderGuideInformation(report) {
         </div>
       </article>
     `).join("")
-    : '<div class="config-message">A seção INFORMAÇÕES GUIAS não foi encontrada neste relatório.</div>';
+    : '<div class="config-message">Nenhuma tabela de guias foi encontrada neste relatório.</div>';
 }
 
 function renderFullReport(report) {

@@ -143,16 +143,27 @@ function repairFixedPaymentRow(line, columns, starts) {
   return values;
 }
 
-function sliceGuideTotalRow(line, columnCount, starts) {
+function sliceGuideTotalRow(line, columns, starts) {
   const amounts = [...line.matchAll(/(?:R\$\s*)?-?\d[\d.]*,\d{2}/g)];
   if (amounts.length === 0) return sliceFixedWidthRow(line, starts);
+
+  const amountIndexes = columns.flatMap((column, index) => (
+    /^(?:valor|vl\.?|glosa)\b/.test(normalizeKey(column)) ? [index] : []
+  ));
+  if (amountIndexes.length === amounts.length && amountIndexes[0] > 0) {
+    const values = columns.map(() => "");
+    values[0] = clean(line.slice(0, amounts[0].index));
+    amountIndexes.forEach((index, offset) => {
+      values[index] = clean(amounts[offset][0]);
+    });
+    return values;
+  }
 
   const values = [
     clean(line.slice(0, amounts[0].index)),
     ...amounts.map((match) => clean(match[0])),
   ];
-  while (values.length < columnCount) values.push("");
-  return values.slice(0, columnCount);
+  return values;
 }
 
 function hasTableDelimiter(line = "") {
@@ -232,66 +243,105 @@ function extractDeclaredPaymentDates(lines) {
   return [...new Set(dates)];
 }
 
-function parseGuideInformation(lines) {
-  const section = findSection(lines, "INFORMACOES GUIAS", ["OBSERVACOES", "FIM DO RELATORIO"]);
+function guideTableDate(line) {
+  const match = line.match(/\b(\d{2})[/-](\d{2})[/-](\d{4})\b/);
+  return match ? match.slice(1).join("/") : "";
+}
+
+function guideColumnIndex(columns) {
+  return columns.findIndex((column) => /^(?:(?:numero|n\.?[º°o]?)\s*(?:da\s+)?|codigo\s+(?:da\s+)?)?guia$/.test(normalizeKey(column)));
+}
+
+function isGuideNumber(value = "") {
+  return /^[\w./-]+$/.test(value) && /\d/.test(value);
+}
+
+function readGuideRow(line, table, isTotal) {
+  const { columns, starts, pipeDelimited } = table;
+  if (pipeDelimited) return isTotal || hasTableDelimiter(line) ? splitDelimitedRow(line) : [];
+  if (isTotal) return sliceGuideTotalRow(line, columns, starts);
+
+  const spacedValues = line.trim().split(/\s{2,}/).map(clean);
+  return spacedValues.length === columns.length ? spacedValues : sliceFixedWidthRow(line, starts);
+}
+
+function parseGuideInformation(lines, paymentDates) {
   const groups = [];
-  let current = null;
+  let inGuideSection = false;
+  let paymentDate = "";
+  let table = null;
 
-  function commit() {
-    if (current?.columns.length) groups.push(current);
-    current = null;
-  }
-
-  for (const line of section) {
-    const dateMatch = clean(line).match(/^Data de pagamento\s*:?[\s]*(\d{2}\/\d{2}\/\d{4})$/i);
-    if (dateMatch) {
-      commit();
-      current = { paymentDate: dateMatch[1], columns: [], rows: [], total: [], pipeDelimited: false, starts: [] };
+  for (const line of lines) {
+    if (!clean(line) || isDivider(line)) continue;
+    const heading = normalizeKey(clean(line)).replace(/^[#*\s]+/, "");
+    if (/^informacoes\s+(?:das?\s+|de\s+)?guias\b/.test(heading)) {
+      inGuideSection = true;
+      paymentDate = guideTableDate(heading);
+      table = null;
       continue;
     }
-    if (!current || !clean(line) || isDivider(line)) continue;
-
-    if (current.columns.length === 0) {
-      current.pipeDelimited = hasTableDelimiter(line);
-      if (current.pipeDelimited) {
-        current.columns = splitDelimitedRow(line);
-      } else {
-        const definitions = fixedWidthColumns(line);
-        current.columns = definitions.map((column) => column.label);
-        current.starts = definitions.map((column) => column.start);
-      }
+    if (!inGuideSection) continue;
+    if (/^(?:observacoes|fim do relatorio|impostos)\b/.test(heading)) {
+      inGuideSection = false;
+      continue;
+    }
+    if (/^data\s+(?:(?:de|do)\s+)?pagamento\s*:?\s*\d/.test(heading)) {
+      paymentDate = guideTableDate(heading);
+      table = null;
       continue;
     }
 
-    if (current.total.length) continue;
+    if (!table) {
+      const pipeDelimited = hasTableDelimiter(line);
+      const definitions = pipeDelimited ? [] : fixedWidthColumns(line);
+      const columns = pipeDelimited ? splitDelimitedRow(line) : definitions.map(({ label }) => label);
+      const guideIndex = guideColumnIndex(columns);
+      if (guideIndex < 0 || columns.length < 2) continue;
+      const group = {
+        paymentDate: paymentDate || (paymentDates.length === 1 ? paymentDates[0] : ""),
+        columns,
+        rows: [],
+        total: [],
+      };
+      groups.push(group);
+      table = { group, columns, guideIndex, pipeDelimited, starts: definitions.map(({ start }) => start) };
+      continue;
+    }
 
-    const isTotal = normalizeKey(clean(line)).startsWith("total");
-    const values = current.pipeDelimited
-      ? splitDelimitedRow(line)
-      : isTotal
-        ? sliceGuideTotalRow(line, current.columns.length, current.starts)
-        : sliceFixedWidthRow(line, current.starts);
-    while (values.length < current.columns.length) values.push("");
-    if (isTotal) current.total = values.slice(0, current.columns.length);
-    else if (values.some(Boolean)) current.rows.push(values.slice(0, current.columns.length));
+    const { group, columns, guideIndex } = table;
+    if (group.total.length) continue;
+    const isTotal = /^[|\u2502\u2551\s*]*total\b/.test(heading);
+    const values = readGuideRow(line, table, isTotal);
+    if (!values.length || (!isTotal && !isGuideNumber(values[guideIndex]))) continue;
+    const row = columns.map((_, index) => values[index] || "");
+    if (isTotal) group.total = row;
+    else group.rows.push(row);
   }
-  commit();
 
-  return groups.map(({ pipeDelimited, starts, ...group }) => {
-    const distinctGuideNumbers = new Set(
-      group.rows
-        .map((row) => clean(row[0] || ""))
-        .filter((value) => /^\d+$/.test(value)),
-    );
-    const declaredCount = group.total
-      .map((value) => normalizeKey(value))
-      .join(" ")
-      .match(/(\d[\d.]*)\s+guia(?:s|\(s\))?/i);
-    const guideCount = distinctGuideNumbers.size
-      || (declaredCount ? Number.parseInt(declaredCount[1].replace(/\./g, ""), 10) : 0);
-
+  return groups.filter((group) => group.rows.length).map((group) => {
+    const guideIndex = guideColumnIndex(group.columns);
+    const guideCount = new Set(group.rows.map((row) => row[guideIndex])).size;
     return { ...group, guideCount };
   });
+}
+
+function summarizeGuidePatients(groups) {
+  const names = new Set();
+  let unnamedRows = 0;
+
+  for (const group of groups) {
+    const nameIndex = group.columns.findIndex((column) => /^(?:nome(?:\s+(?:do\s+)?(?:beneficiario|paciente|segurado))?|beneficiario|paciente|segurado)$/.test(normalizeKey(column)));
+    for (const row of group.rows) {
+      const name = normalizeKey(row[nameIndex]);
+      if (/\p{L}/u.test(name) && !/^(?:n\/?a|s\/?n|nao (?:consta|informad[oa]|identificad[oa])|sem (?:nome|identificacao))$/.test(name)) {
+        names.add(name);
+      } else {
+        unnamedRows += 1;
+      }
+    }
+  }
+
+  return { namedPatients: names.size, unnamedRows };
 }
 
 function parseItems(lines) {
@@ -498,7 +548,6 @@ function parseReport(text, filePath, rootPath, stats = {}) {
   const items = parseItems(lines);
   let paymentsByDate = parsePaymentsByDate(lines, items);
   const paymentDescription = parsePaymentDescription(lines);
-  const guideInformation = parseGuideInformation(lines);
   if (paymentsByDate.length === 0) paymentsByDate = paymentsFromDescription(paymentDescription);
   const downloads = parseDownloads(lines);
   const context = inferContext(filePath, rootPath);
@@ -506,6 +555,7 @@ function parseReport(text, filePath, rootPath, stats = {}) {
   if (paymentDates.length === 0) {
     paymentDates.push(...extractDeclaredPaymentDates(lines));
   }
+  const guideInformation = parseGuideInformation(lines, paymentDates);
 
   const taxesCents = sum(items, "pccCents") + sum(items, "irrfCents") + sum(items, "issCents") + sum(items, "inssCents");
   const productionCents = sum(items, "productionCents") || sum(paymentsByDate, "presentedCents") || extractSummaryMoney(lines, "SOMATORIO VALOR PRODUCAO") || extractSummaryMoney(lines, "Valor Apresentado");
@@ -543,6 +593,7 @@ function parseReport(text, filePath, rootPath, stats = {}) {
     paymentsByDate,
     paymentDescription,
     guideInformation,
+    guidePatientSummary: summarizeGuidePatients(guideInformation),
     downloads,
     observations: parseObservations(lines),
     fullSections: parseFullSections(lines),

@@ -273,8 +273,11 @@ OBSERVACOES`;
   const fixedReport = parseReport(fixed, "C:\\Claude\\Intermedica\\SETEMBRO_2026\\relatorio_Intermedica.txt", "C:\\Claude");
   assert.equal(fixedReport.guideInformation.length, 1);
   assert.deepEqual(fixedReport.guideInformation[0].columns, ["Guia", "Valor Informado", "Valor Liberado"]);
-  assert.equal(fixedReport.guideInformation[0].rows.length, 2);
-  assert.equal(fixedReport.guideInformation[0].total[0], "TOTAL (2 guias)");
+  assert.deepEqual(fixedReport.guideInformation[0].rows, [
+    ["288523239", "500,00", "500,00"],
+    ["292027498", "160,00", "160,00"],
+  ]);
+  assert.deepEqual(fixedReport.guideInformation[0].total, ["TOTAL (2 guias)", "660,00", "660,00"]);
   assert.equal(fixedReport.guideInformation[0].guideCount, 2);
 
   const pipes = `
@@ -294,9 +297,12 @@ FIM DO RELATORIO`;
   const pipeReport = parseReport(pipes, "C:\\Claude\\Sulamerica\\SETEMBRO_2026\\relatorio_Sulamerica.txt", "C:\\Claude");
   assert.equal(pipeReport.guideInformation.length, 2);
   assert.equal(pipeReport.guideInformation[1].paymentDate, "17/09/2026");
-  assert.equal(pipeReport.guideInformation[0].rows[0][1], "PACIENTE TESTE");
-  assert.equal(pipeReport.guideInformation[1].total[3], "R$ 450,00");
+  assert.deepEqual(pipeReport.guideInformation[0].rows, [
+    ["212405168", "PACIENTE TESTE", "R$ 4.600,00", "R$ 4.600,00"],
+  ]);
+  assert.deepEqual(pipeReport.guideInformation[1].total, ["TOTAL", "1 guia(s)", "R$ 500,00", "R$ 450,00"]);
   assert.equal(pipeReport.guideInformation[0].guideCount, 1);
+  assert.deepEqual(pipeReport.guidePatientSummary, { namedPatients: 2, unnamedRows: 0 });
 });
 
 test("distingue a quantidade de guias da quantidade de linhas", () => {
@@ -317,7 +323,59 @@ FIM DO RELATORIO`;
 
   assert.equal(report.guideInformation[0].rows.length, 3);
   assert.equal(report.guideInformation[0].guideCount, 2);
+  assert.deepEqual(report.guidePatientSummary, { namedPatients: 0, unnamedRows: 3 });
   assert.deepEqual(report.guideInformation[0].total, ["TOTAL (2 guias)", "450,00", "450,00"]);
+});
+
+test("lê datas nos títulos de guias e conta pacientes distintos entre pagamentos", () => {
+  const text = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - SULAMERICA
+INFORMACOES GUIAS - Data de Pagamento 04/11/2026
+Guia          Nome do Beneficiario                 Valor Informado    Valor Liberado
+1001          MARIA JOÃO DA SILVA                          100,00            90,00
+1002          ANA SOUZA                                    60,00            60,00
+TOTAL (2 guias)                                           160,00           150,00
+
+INFORMACOES GUIAS (data principal 16-11-2026 - todas as guias do mes)
++------+--------------------+-----------------+----------------+
+| Guia | Beneficiário       | Valor Informado | Valor Liberado |
++------+--------------------+-----------------+----------------+
+| 3001 | Maria Joao da Silva | 30,00           | 30,00          |
+| 3002 | Não informado      | 40,00           | 40,00          |
+| TOTAL | 2 guias           | 70,00           | 70,00          |
++------+--------------------+-----------------+----------------+
+
+IMPOSTOS (DEMONSTRATIVO DE PAGAMENTO)
+Data de Pagamento: 16/11/2026
+Lote            PIS     COFINS     Total
+4001            1,00    2,00       3,00
+FIM DO RELATORIO`;
+  const report = parseReport(text, "C:\\Claude\\Sulamerica\\NOVEMBRO_2026\\relatorio_Sulamerica.txt", "C:\\Claude");
+
+  assert.deepEqual(report.guideInformation.map((group) => group.paymentDate), ["04/11/2026", "16/11/2026"]);
+  assert.deepEqual(report.guideInformation[0].rows[0], ["1001", "MARIA JOÃO DA SILVA", "100,00", "90,00"]);
+  assert.deepEqual(report.guideInformation[0].total, ["TOTAL (2 guias)", "", "160,00", "150,00"]);
+  assert.deepEqual(report.guideInformation[1].total, ["TOTAL", "2 guias", "70,00", "70,00"]);
+  assert.deepEqual(report.guidePatientSummary, { namedPatients: 2, unnamedRows: 1 });
+});
+
+test("lê guias sem linha de data e conta guias pela coluna correta", () => {
+  const text = `
+RELATORIO DE DEMONSTRATIVOS DE PAGAMENTO - EXEMPLO
+Data do pagamento informado pelo convenio: 16/11/2026
+INFORMACOES GUIAS
+Lote | Guia | Nome | Vl Liberado
+401  | 1001 | ANA SOUZA | 30.00
+401  | 1002 | ANA SOUZA | 20.00
+401  | 1002 | ANA SOUZA | 15.00
+TOTAL | | | 65.00
+OBSERVACOES`;
+  const report = parseReport(text, "C:\\Claude\\Exemplo\\NOVEMBRO_2026\\relatorio_Exemplo.txt", "C:\\Claude");
+
+  assert.equal(report.guideInformation[0].paymentDate, "16/11/2026");
+  assert.equal(report.guideInformation[0].rows.length, 3);
+  assert.equal(report.guideInformation[0].guideCount, 2);
+  assert.deepEqual(report.guidePatientSummary, { namedPatients: 1, unnamedRows: 0 });
 });
 
 test("preserva dois demonstrativos da Intermedica no mesmo mês", () => {

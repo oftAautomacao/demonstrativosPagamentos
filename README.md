@@ -65,3 +65,7 @@ O executável é autônomo: o Python e as dependências necessárias estão incl
 ## Testes
 
 Execute `npm test` para validar a leitura dos relatórios e a preservação das seções variáveis.
+
+Na aba Guias, cada formato mensal novo deve ser aceito junto com os formatos anteriores. Ao adaptar a leitura, mantenha os testes existentes e acrescente um exemplo fictício que reproduza a estrutura nova. Confira as datas de pagamento, as colunas, as linhas, os totais e a contagem de nomes distintos.
+
+Se for útil recorrer a uma IA para identificar um formato novo, use somente o cabeçalho e exemplos fictícios que preservem o espaçamento e os separadores. Valide a regra de leitura com os testes antes de incorporá-la ao programa.
